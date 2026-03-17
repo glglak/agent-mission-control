@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.next/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.local
+.turbo/
+coverage/
+.DS_Store
+Thumbs.db
+.claude/
