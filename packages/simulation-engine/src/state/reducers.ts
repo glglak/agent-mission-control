@@ -116,6 +116,8 @@ export function reduce(state: WorldState, event: CanonicalEvent): WorldState {
     case EventType.SessionStarted: {
       const fresh = createInitialWorldState();
       fresh.tick = tick;
+      // Preserve accumulated token usage across session reloads
+      fresh.tokenUsage = { ...tokenUsage };
       return fresh;
     }
 

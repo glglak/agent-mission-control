@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import { SimulationEngine } from '@amc/simulation-engine';
 import type { WorldState } from '@amc/simulation-engine';
 import { useSessionStore } from '@/stores/session-store';
@@ -14,45 +14,55 @@ const emptyState: WorldState = {
 };
 
 export function useSimulation() {
-  const engineRef = useRef<SimulationEngine | null>(null);
+  const engineRef = useRef<SimulationEngine>(new SimulationEngine('live'));
   const events = useSessionStore((s) => s.events);
   const lastProcessed = useRef(0);
+  // Tracks engine version so useSyncExternalStore re-subscribes on engine swap
+  const engineVersion = useRef(0);
+  const forceUpdate = useRef<(() => void) | null>(null);
 
-  if (!engineRef.current) {
-    engineRef.current = new SimulationEngine('live');
-  }
-
-  // Feed new events to the engine
+  // Feed events to engine
   useEffect(() => {
     const engine = engineRef.current;
-    if (!engine) return;
 
-    // Detect bulk-replace (session switch): reset engine and reprocess all events
-    if (events.length < lastProcessed.current) {
-      engineRef.current = new SimulationEngine('live');
-      lastProcessed.current = 0;
-      const freshEngine = engineRef.current;
+    // Detect bulk-replace (session switch): events array was replaced
+    if (events.length < lastProcessed.current || lastProcessed.current === 0) {
+      // Create fresh engine and replay all events
+      const fresh = new SimulationEngine('live');
       for (let i = 0; i < events.length; i++) {
-        freshEngine.ingestEvent(events[i]);
+        fresh.ingestEvent(events[i]);
       }
+      engineRef.current = fresh;
       lastProcessed.current = events.length;
+      engineVersion.current++;
+      // Force React to re-subscribe to the new engine
+      forceUpdate.current?.();
       return;
     }
 
+    // Incremental: process only new events
     for (let i = lastProcessed.current; i < events.length; i++) {
       engine.ingestEvent(events[i]);
     }
     lastProcessed.current = events.length;
   }, [events]);
 
-  const state = useSyncExternalStore(
-    (cb) => {
-      if (!engineRef.current) return () => {};
-      return engineRef.current.subscribe(cb);
-    },
-    () => engineRef.current?.getState() ?? emptyState,
-    () => emptyState,
-  );
+  const subscribe = useCallback((cb: () => void) => {
+    forceUpdate.current = cb;
+    const unsub = engineRef.current.subscribe(cb);
+    return () => {
+      unsub();
+      if (forceUpdate.current === cb) forceUpdate.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineVersion.current]);
+
+  const getSnapshot = useCallback(() => {
+    return engineRef.current.getState();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineVersion.current]);
+
+  const state = useSyncExternalStore(subscribe, getSnapshot, () => emptyState);
 
   return { state, engine: engineRef.current };
 }

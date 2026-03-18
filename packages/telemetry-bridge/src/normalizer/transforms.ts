@@ -97,6 +97,7 @@ function transformClaudeCodeHook(raw: RawHookData): CanonicalEvent | CanonicalEv
     case 'SubagentStart': {
       // A subagent was spawned — register it as a new agent
       const subAgentId = raw.agent_id ?? `sub-${Date.now()}`;
+      const parentId = (raw.parent_agent_id as string | undefined) ?? agentId ?? 'main';
       return {
         event_id: '',
         timestamp: ts,
@@ -106,7 +107,7 @@ function transformClaudeCodeHook(raw: RawHookData): CanonicalEvent | CanonicalEv
         payload: {
           name: raw.agent_type ?? 'subagent',
           type: raw.agent_type,
-          parent_agent_id: 'main',
+          parent_agent_id: parentId,
           metadata: { transcript_path: raw.agent_transcript_path },
         },
       };

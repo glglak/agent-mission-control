@@ -10,6 +10,10 @@ export class EventBus extends EventEmitter {
     return super.on('event', listener);
   }
 
+  offEvent(listener: (event: CanonicalEvent) => void): this {
+    return super.removeListener('event', listener);
+  }
+
   publish(event: CanonicalEvent): void {
     this.publishEvent(event);
   }

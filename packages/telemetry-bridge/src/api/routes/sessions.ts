@@ -1,9 +1,18 @@
 import type { FastifyInstance } from 'fastify';
+import type { SessionRow } from '../../store/repositories/session.repo.js';
 import { getAllSessions, getSessionById } from '../../store/repositories/session.repo.js';
+
+function parseSessionMetadata(session: SessionRow) {
+  try {
+    return { ...session, metadata: session.metadata ? JSON.parse(session.metadata) : null };
+  } catch {
+    return { ...session, metadata: null };
+  }
+}
 
 export async function sessionRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/sessions', async (_request, reply) => {
-    const sessions = getAllSessions();
+    const sessions = getAllSessions().map(parseSessionMetadata);
     return reply.send(sessions);
   });
 
@@ -14,7 +23,7 @@ export async function sessionRoutes(app: FastifyInstance): Promise<void> {
       if (!session) {
         return reply.status(404).send({ error: 'Session not found' });
       }
-      return reply.send(session);
+      return reply.send(parseSessionMetadata(session));
     },
   );
 }

@@ -6,4 +6,8 @@ CREATE TABLE IF NOT EXISTS token_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, ev
 CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL, from_agent TEXT NOT NULL, to_agent TEXT NOT NULL, content TEXT NOT NULL, timestamp TEXT NOT NULL, FOREIGN KEY (event_id) REFERENCES events(event_id));
 CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_agent ON events(agent_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_file_activity_path ON file_activity(file_path);
+CREATE INDEX IF NOT EXISTS idx_token_usage_session ON token_usage(session_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_agents_session ON agents(session_id);

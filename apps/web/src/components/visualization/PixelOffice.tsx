@@ -420,34 +420,70 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
         ctx.fillRect(fp.x+(tp.x-fp.x)*t+4,fp.y+(tp.y-fp.y)*t+4,4,4);
       }
 
-      // Fired/completed agents floating in the sky with halos
+      // Detect fired agents and parent-child relationships from events
       const firedIds=new Set<string>();
+      const parentMap=new Map<string,string>(); // child → parent
       for(const ev of eventsRef.current){
         if(ev.event_type==='agent_completed'){
           const p=ev.payload as Record<string,unknown>|undefined;
           if(p&&p.success===false)firedIds.add(ev.agent_id??'');
         }
+        if(ev.event_type==='agent_registered'){
+          const p=ev.payload as Record<string,unknown>|undefined;
+          if(p?.parent_agent_id)parentMap.set(ev.agent_id??'',p.parent_agent_id as string);
+        }
       }
+
+      // Draw parent→child connection lines (subagent hierarchy)
+      for(const[childId,parentId]of parentMap){
+        const cp=positions.get(childId),pp=positions.get(parentId);
+        if(!cp||!pp)continue;
+        ctx.strokeStyle='rgba(139,92,246,0.3)';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+        ctx.beginPath();ctx.moveTo(pp.x+6,pp.y+6);ctx.lineTo(cp.x+6,cp.y+6);ctx.stroke();ctx.setLineDash([]);
+        // Small diamond at child end
+        ctx.fillStyle='#8b5cf6';
+        ctx.fillRect(cp.x+4,cp.y-2,4,4);
+      }
+
+      // Fired agents: float up to "heaven" strip at top with halo + fall animation
       let firedIdx=0;
       for(const a of agents){
         if(!firedIds.has(a.id))continue;
-        const fx=80+firedIdx*60;
-        const fy=6+Math.sin(f*0.02+firedIdx*2)*3;
-        // Ghost/transparent agent
-        ctx.globalAlpha=0.5;
+        const targetY=-10+Math.sin(f*0.015+firedIdx*1.5)*4;
+        const fx=60+firedIdx*55;
+        // Animate falling up (using frame counter for timing)
+        const p=positions.get(a.id);
+        let fy=targetY;
+        if(p){
+          // Smoothly rise from last position to heaven
+          const rise=Math.min(1,(f%600)/120);
+          fy=p.y*(1-rise)+targetY*rise;
+        }
+        // Ghost agent
+        ctx.globalAlpha=0.45;
         drawAgent(ctx,fx,fy,HAIR[hash(a.id)%HAIR.length],SKIN[(hash(a.id)>>3)%SKIN.length],
-          '#888',0,false,'#ef4444',a.name);
+          '#666',0,false,'#ef4444',a.name);
         ctx.globalAlpha=1;
         // Halo
         ctx.strokeStyle='#fbbf24';ctx.lineWidth=1;
-        ctx.beginPath();ctx.ellipse(fx+6,fy-6,8,3,0,0,Math.PI*2);ctx.stroke();
-        // Wings
-        ctx.fillStyle='#fef3c755';
-        ctx.fillRect(fx-6,fy+4,6,8);ctx.fillRect(fx+12,fy+4,6,8);
-        // "RIP" or "FIRED" text
+        ctx.beginPath();ctx.ellipse(fx+6,fy-8,9,3,0,0,Math.PI*2);ctx.stroke();
+        // Angel wings
+        ctx.fillStyle='rgba(254,243,199,0.4)';
+        ctx.beginPath();ctx.moveTo(fx-2,fy+6);ctx.lineTo(fx-8,fy+2);ctx.lineTo(fx-6,fy+10);ctx.fill();
+        ctx.beginPath();ctx.moveTo(fx+14,fy+6);ctx.lineTo(fx+20,fy+2);ctx.lineTo(fx+18,fy+10);ctx.fill();
+        // FIRED banner
+        ctx.fillStyle='rgba(0,0,0,0.7)';ctx.fillRect(fx-4,fy+20,22,8);
         ctx.font='bold 5px monospace';ctx.fillStyle='#ef4444';ctx.textAlign='center';
-        ctx.fillText('FIRED',fx+6,fy+24);
+        ctx.fillText('FIRED!',fx+6,fy+26);
         firedIdx++;
+      }
+
+      // If there are fired agents, draw "heaven" strip background
+      if(firedIds.size>0){
+        ctx.fillStyle='rgba(254,243,199,0.08)';
+        ctx.fillRect(0,0,W,20);
+        ctx.font='bold 6px monospace';ctx.fillStyle='rgba(251,191,36,0.3)';ctx.textAlign='left';
+        ctx.fillText('AGENT HEAVEN',4,8);
       }
 
       drawHUD(ctx,agents,ws.tokenUsage,f);
