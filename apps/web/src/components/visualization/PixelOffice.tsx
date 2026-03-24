@@ -403,14 +403,73 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
 
       drawFlicker(ctx,f);
 
+      // Build per-agent status text and speech bubbles from recent events
+      const agentStatus = new Map<string, string>();
+      const agentBubble = new Map<string, {text:string; age:number}>();
+      const now = Date.now();
+      for (let ei = eventsRef.current.length - 1; ei >= Math.max(0, eventsRef.current.length - 200); ei--) {
+        const ev = eventsRef.current[ei];
+        const aid = ev.agent_id ?? '';
+        // Status subtitle: last tool call
+        if (!agentStatus.has(aid) && ev.event_type === 'tool_called') {
+          const pl = ev.payload as Record<string,unknown>|undefined;
+          const tn = (pl?.tool_name as string) ?? '';
+          const fp = (pl?.file_path as string) ?? '';
+          const fname = fp ? fp.split(/[/\\]/).pop() ?? '' : '';
+          agentStatus.set(aid, fname ? `${tn} ${fname}` : tn);
+        }
+        // Speech bubble: last notification/message (within 30s)
+        if (!agentBubble.has(aid) && (ev.event_type === 'agent_message_sent')) {
+          const pl = ev.payload as Record<string,unknown>|undefined;
+          const content = (pl?.content as string) ?? '';
+          const evTime = new Date(ev.timestamp).getTime();
+          const age = (now - evTime) / 1000;
+          if (age < 30 && content) {
+            agentBubble.set(aid, { text: content.slice(0, 40), age });
+          }
+        }
+      }
+
       for(const a of agents){
         const p=positions.get(a.id);if(!p)continue;
         const h=hash(a.id);
-        drawAgent(ctx,Math.round(p.x),Math.round(p.y),
+        const px=Math.round(p.x), py=Math.round(p.y);
+        drawAgent(ctx,px,py,
           HAIR[h%HAIR.length],SKIN[(h>>3)%SKIN.length],SHIRT[(h>>6)%SHIRT.length],
           Math.abs(p.x-p.tx)>2?Math.floor(f/12):0,
           Math.abs(p.x-p.tx)<=2&&Math.abs(p.y-p.ty)<=2,
           STATE_CLR[a.visualState]??'#f59e0b',a.name);
+
+        // Status subtitle under name
+        const status = agentStatus.get(a.id);
+        if(status){
+          ctx.font='5px monospace';ctx.textAlign='center';
+          ctx.fillStyle='rgba(0,0,0,0.5)';
+          const sw=status.length*3.5+4;
+          ctx.fillRect(px+6-sw/2,py-5,sw,7);
+          ctx.fillStyle='#94a3b8';
+          ctx.fillText(status.slice(0,20),px+6,py);
+        }
+
+        // Speech bubble
+        const bubble = agentBubble.get(a.id);
+        if(bubble && bubble.age < 20){
+          const opacity = Math.max(0.2, 1 - bubble.age / 20);
+          const bx=px-10, by=py-30-Math.sin(f*0.03)*2;
+          const bw=Math.min(bubble.text.length*4+8, 100);
+          // Bubble body
+          ctx.fillStyle=`rgba(255,255,255,${opacity*0.9})`;
+          ctx.fillRect(bx,by,bw,12);
+          // Bubble tail
+          ctx.fillRect(bx+8,by+12,4,3);
+          // Text
+          ctx.font='5px monospace';ctx.textAlign='left';
+          ctx.fillStyle=`rgba(30,30,48,${opacity})`;
+          ctx.fillText(bubble.text.slice(0,25),bx+3,by+8);
+          // Border
+          ctx.strokeStyle=`rgba(100,100,140,${opacity*0.5})`;ctx.lineWidth=0.5;
+          ctx.strokeRect(bx,by,bw,12);
+        }
       }
 
       // Blocked indicators
