@@ -289,7 +289,20 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
   wsRef.current = worldState;
   const fRef = useRef(0);
   const [tooltip, setTooltip] = useState<TooltipData|null>(null);
+  const tooltipTimer = useRef<ReturnType<typeof setTimeout>|null>(null);
   const events = useSessionStore(s => s.events);
+
+  // Close tooltip on scroll or after timeout
+  useEffect(() => {
+    if (!tooltip) return;
+    const close = () => setTooltip(null);
+    window.addEventListener('scroll', close, true);
+    tooltipTimer.current = setTimeout(close, 6000);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      if (tooltipTimer.current) clearTimeout(tooltipTimer.current);
+    };
+  }, [tooltip]);
   const activeSessionId = useSessionStore(s => s.activeSessionId);
   const sessions = useSessionStore(s => s.sessions);
   const loadEvents = useSessionStore(s => s.loadEvents);
@@ -515,15 +528,16 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
           Replaying...
         </div>
       )}
-      {/* Agent Tooltip */}
+      {/* Agent Tooltip — closes on scroll, timeout, or X button */}
       {tooltip&&(
-        <div className="fixed z-50 pointer-events-none" style={{left:tooltip.screenX+12,top:tooltip.screenY-20}}>
-          <div className="bg-slate-900 border-2 rounded-lg p-3 shadow-2xl text-xs min-w-[240px] max-w-[340px] pointer-events-auto"
+        <div className="fixed z-50" style={{left:Math.min(tooltip.screenX+12, window.innerWidth-360),top:Math.min(tooltip.screenY-20, window.innerHeight-300)}}>
+          <div className="bg-slate-900 border-2 rounded-lg p-3 shadow-2xl text-xs min-w-[240px] max-w-[340px]"
             style={{borderColor:STATE_CLR[tooltip.agent.visualState]??'#888'}}>
             <div className="flex items-center gap-2 mb-2">
               <div className="w-3 h-3 rounded-full" style={{background:STATE_CLR[tooltip.agent.visualState]}} />
               <span className="font-bold text-white text-sm">{tooltip.agent.name}</span>
               <span className="ml-auto text-slate-400 font-mono text-[10px]">{tooltip.agent.id.slice(0,12)}</span>
+              <button onClick={(e)=>{e.stopPropagation();setTooltip(null);}} className="text-slate-500 hover:text-white ml-1 text-sm leading-none">&times;</button>
             </div>
             <div className="grid grid-cols-2 gap-1 text-slate-300 mb-2">
               <div>Status: <span className="font-semibold" style={{color:STATE_CLR[tooltip.agent.visualState]}}>{STATE_LABEL[tooltip.agent.visualState]}</span></div>
@@ -546,7 +560,7 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
                   </div>
                 ))}
             </div>
-            <div className="text-[10px] text-slate-600 mt-2 text-center">click elsewhere to close</div>
+            <div className="text-[10px] text-slate-600 mt-1 text-center">auto-closes in 6s</div>
           </div>
         </div>
       )}
