@@ -15,6 +15,7 @@ import { FileActivityInspector } from '@/components/inspectors/FileActivityInspe
 import { EventLog } from '@/components/inspectors/EventLog';
 import { TimelineBar } from '@/components/timeline/TimelineBar';
 import { ScrumPanel } from '@/components/dashboard/ScrumPanel';
+import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
 
 export default function DashboardPage() {
   useWebSocket();
@@ -66,6 +67,7 @@ export default function DashboardPage() {
 
             {(view === 'dashboard' || view === 'split') && (
               <>
+                <ActivityFeed />
                 <AgentGrid worldState={worldState} />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -80,6 +82,11 @@ export default function DashboardPage() {
 
                 <EventLog />
               </>
+            )}
+
+            {/* Activity feed under pixel office in 3D view too */}
+            {view === '3d' && (
+              <ActivityFeed />
             )}
 
             <TimelineBar />
