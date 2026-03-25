@@ -440,35 +440,51 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
           Math.abs(p.x-p.tx)<=2&&Math.abs(p.y-p.ty)<=2,
           STATE_CLR[a.visualState]??'#f59e0b',a.name);
 
-        // Status subtitle under name
+        // Status subtitle under name — BIG and readable
         const status = agentStatus.get(a.id);
         if(status){
-          ctx.font='5px monospace';ctx.textAlign='center';
-          ctx.fillStyle='rgba(0,0,0,0.5)';
-          const sw=status.length*3.5+4;
-          ctx.fillRect(px+6-sw/2,py-5,sw,7);
-          ctx.fillStyle='#94a3b8';
-          ctx.fillText(status.slice(0,20),px+6,py);
+          ctx.font='bold 6px monospace';ctx.textAlign='center';
+          const statusText = status.slice(0,24);
+          const sw=statusText.length*4+10;
+          ctx.fillStyle='rgba(0,0,0,0.7)';
+          ctx.fillRect(px+6-sw/2,py-4,sw,9);
+          ctx.fillStyle='#a5b4fc';
+          ctx.fillText(statusText,px+6,py+3);
         }
 
-        // Speech bubble
+        // Speech bubble — BIG, clear, white background
         const bubble = agentBubble.get(a.id);
-        if(bubble && bubble.age < 20){
-          const opacity = Math.max(0.2, 1 - bubble.age / 20);
-          const bx=px-10, by=py-30-Math.sin(f*0.03)*2;
-          const bw=Math.min(bubble.text.length*4+8, 100);
+        if(bubble && bubble.age < 25){
+          const opacity = Math.max(0.3, 1 - bubble.age / 25);
+          const bubbleText = bubble.text.slice(0,35);
+          const bw=Math.max(bubbleText.length*4.5+14, 50);
+          const bh=16;
+          const bx=px-bw/2+6, by=py-34-Math.sin(f*0.02)*2;
+          // Shadow
+          ctx.fillStyle=`rgba(0,0,0,${opacity*0.3})`;
+          ctx.fillRect(bx+2,by+2,bw,bh);
           // Bubble body
-          ctx.fillStyle=`rgba(255,255,255,${opacity*0.9})`;
-          ctx.fillRect(bx,by,bw,12);
-          // Bubble tail
-          ctx.fillRect(bx+8,by+12,4,3);
-          // Text
-          ctx.font='5px monospace';ctx.textAlign='left';
-          ctx.fillStyle=`rgba(30,30,48,${opacity})`;
-          ctx.fillText(bubble.text.slice(0,25),bx+3,by+8);
+          ctx.fillStyle=`rgba(255,255,255,${opacity*0.95})`;
+          ctx.fillRect(bx,by,bw,bh);
+          // Bubble tail (triangle)
+          ctx.fillRect(bx+bw/2-3,by+bh,6,4);
           // Border
-          ctx.strokeStyle=`rgba(100,100,140,${opacity*0.5})`;ctx.lineWidth=0.5;
-          ctx.strokeRect(bx,by,bw,12);
+          ctx.strokeStyle=`rgba(59,130,246,${opacity*0.6})`;ctx.lineWidth=1;
+          ctx.strokeRect(bx,by,bw,bh);
+          // Text — BIGGER
+          ctx.font='bold 7px monospace';ctx.textAlign='left';
+          ctx.fillStyle=`rgba(15,23,42,${opacity})`;
+          ctx.fillText(bubbleText,bx+5,by+11);
+        }
+
+        // Human interaction needed indicator
+        const needsHuman = agentBubble.get(a.id)?.text.match(/blocked|need human|waiting|permission|help/i);
+        if(needsHuman){
+          const qx=px+14, qy=py-16;
+          ctx.fillStyle='#f59e0b';
+          ctx.fillRect(qx,qy,10,12);
+          ctx.font='bold 8px monospace';ctx.fillStyle='#000';ctx.textAlign='center';
+          ctx.fillText('?',qx+5,qy+9);
         }
       }
 

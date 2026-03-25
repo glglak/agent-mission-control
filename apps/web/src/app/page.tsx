@@ -14,6 +14,7 @@ import { AgentInspector } from '@/components/inspectors/AgentInspector';
 import { FileActivityInspector } from '@/components/inspectors/FileActivityInspector';
 import { EventLog } from '@/components/inspectors/EventLog';
 import { TimelineBar } from '@/components/timeline/TimelineBar';
+import { ScrumPanel } from '@/components/dashboard/ScrumPanel';
 
 export default function DashboardPage() {
   useWebSocket();
@@ -85,12 +86,14 @@ export default function DashboardPage() {
           </div>
         </main>
 
-        {/* Inspector panel */}
-        {inspectorOpen && (
-          <aside className="w-72 border-l border-slate-200 bg-white flex-shrink-0">
+        {/* Right panel: Scrum Board or Inspector */}
+        <aside className="w-80 border-l border-slate-200 bg-white flex-shrink-0 overflow-y-auto">
+          {inspectorOpen ? (
             <AgentInspector worldState={worldState} />
-          </aside>
-        )}
+          ) : (
+            <ScrumPanel />
+          )}
+        </aside>
       </div>
     </div>
   );
