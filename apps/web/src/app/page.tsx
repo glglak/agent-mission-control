@@ -67,7 +67,6 @@ export default function DashboardPage() {
 
             {(view === 'dashboard' || view === 'split') && (
               <>
-                <ActivityFeed />
                 <AgentGrid worldState={worldState} />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -84,10 +83,6 @@ export default function DashboardPage() {
               </>
             )}
 
-            {/* Activity feed under pixel office in 3D view too */}
-            {view === '3d' && (
-              <ActivityFeed />
-            )}
 
             <TimelineBar />
           </div>

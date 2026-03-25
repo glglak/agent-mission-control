@@ -1,281 +1,264 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useSessionStore } from '@/stores/session-store';
 import type { CanonicalEvent } from '@amc/shared';
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+type Tab = 'board' | 'log' | 'retro' | 'metrics';
 
-type SprintColumn = 'BACKLOG' | 'IN PROGRESS' | 'REVIEW' | 'DONE';
-
-interface SprintTask {
-  task_id: string;
-  description: string;
-  assigned_to: string;
-  story_points: number;
-  column: SprintColumn;
+function pl(ev: CanonicalEvent): Record<string, unknown> {
+  return (ev.payload ?? {}) as Record<string, unknown>;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-const HUMAN_KEYWORDS = ['blocked', 'need human', 'waiting for approval', 'permission'] as const;
-
-const CEREMONY_KEYWORDS = [
-  'planning',
-  'standup',
-  'retro',
-  'review',
-  'blocked',
-  'need human',
-  'waiting for approval',
-] as const;
-
-function payloadField<T>(event: CanonicalEvent, key: string): T | undefined {
-  const p = event.payload as Record<string, unknown> | undefined;
-  return p?.[key] as T | undefined;
+interface Task {
+  id: string;
+  title: string;
+  assignee: string;
+  points: number;
+  status: 'backlog' | 'in_progress' | 'review' | 'done';
 }
-
-function contentMatchesAny(content: string, keywords: readonly string[]): boolean {
-  const lower = content.toLowerCase();
-  return keywords.some((kw) => lower.includes(kw));
-}
-
-function truncate(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max) + '\u2026' : text;
-}
-
-// ---------------------------------------------------------------------------
-// Data derivation
-// ---------------------------------------------------------------------------
-
-function deriveSprintData(events: CanonicalEvent[]) {
-  const taskMap = new Map<string, SprintTask>();
-  let sprintGoal: string | null = null;
-  let needsHumanInput = false;
-  const ceremonyMessages: string[] = [];
-
-  for (const ev of events) {
-    // -- task_assigned -------------------------------------------------------
-    if (ev.event_type === 'task_assigned') {
-      const taskId = payloadField<string>(ev, 'task_id') ?? '';
-      const description = payloadField<string>(ev, 'description') ?? '';
-      const assignedTo = payloadField<string>(ev, 'assigned_to') ?? '';
-      const storyPoints = payloadField<number>(ev, 'story_points') ?? 0;
-      const goal = payloadField<string>(ev, 'sprint_goal');
-
-      if (!sprintGoal && goal) {
-        sprintGoal = goal;
-      }
-
-      taskMap.set(taskId, {
-        task_id: taskId,
-        description,
-        assigned_to: assignedTo,
-        story_points: storyPoints,
-        column: 'BACKLOG',
-      });
-    }
-
-    // -- task_completed ------------------------------------------------------
-    if (ev.event_type === 'task_completed') {
-      const taskId = payloadField<string>(ev, 'task_id') ?? '';
-      const success = payloadField<boolean>(ev, 'success');
-      const task = taskMap.get(taskId);
-      if (task) {
-        task.column = success === false ? 'REVIEW' : 'DONE';
-      }
-    }
-
-    // -- agent_message_sent --------------------------------------------------
-    if (ev.event_type === 'agent_message_sent') {
-      const content = payloadField<string>(ev, 'content') ?? '';
-      if (contentMatchesAny(content, CEREMONY_KEYWORDS)) {
-        ceremonyMessages.push(content);
-      }
-      if (contentMatchesAny(content, HUMAN_KEYWORDS)) {
-        needsHumanInput = true;
-      }
-    }
-  }
-
-  // Infer IN PROGRESS: tasks that are assigned but not yet completed, if there
-  // is any later activity by the same agent we consider them in progress.
-  const agentActivity = new Set<string>();
-  for (const ev of events) {
-    if (
-      ev.event_type === 'tool_called' ||
-      ev.event_type === 'file_edited' ||
-      ev.event_type === 'agent_started'
-    ) {
-      if (ev.agent_id) agentActivity.add(ev.agent_id);
-    }
-  }
-
-  for (const task of taskMap.values()) {
-    if (task.column === 'BACKLOG' && agentActivity.has(task.assigned_to)) {
-      task.column = 'IN PROGRESS';
-    }
-  }
-
-  const tasks = Array.from(taskMap.values());
-  const totalPoints = tasks.reduce((s, t) => s + t.story_points, 0);
-  const donePoints = tasks
-    .filter((t) => t.column === 'DONE')
-    .reduce((s, t) => s + t.story_points, 0);
-
-  return { sprintGoal, tasks, totalPoints, donePoints, needsHumanInput, ceremonyMessages };
-}
-
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
-const COLUMN_ORDER: SprintColumn[] = ['BACKLOG', 'IN PROGRESS', 'REVIEW', 'DONE'];
-
-const COLUMN_COLORS: Record<SprintColumn, string> = {
-  BACKLOG: 'border-slate-600',
-  'IN PROGRESS': 'border-blue-500',
-  REVIEW: 'border-amber-500',
-  DONE: 'border-emerald-500',
-};
-
-const COLUMN_BADGE_COLORS: Record<SprintColumn, string> = {
-  BACKLOG: 'bg-slate-700 text-slate-300',
-  'IN PROGRESS': 'bg-blue-900/60 text-blue-300',
-  REVIEW: 'bg-amber-900/60 text-amber-300',
-  DONE: 'bg-emerald-900/60 text-emerald-300',
-};
-
-function TaskCard({ task }: { task: SprintTask }) {
-  return (
-    <div
-      className={`rounded border-l-2 ${COLUMN_COLORS[task.column]} bg-slate-800/80 px-2 py-1.5 mb-1.5 text-xs`}
-    >
-      <p className="text-slate-200 font-medium leading-tight">
-        {truncate(task.description, 38)}
-      </p>
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-slate-400 truncate max-w-[120px]">{task.assigned_to}</span>
-        {task.story_points > 0 && (
-          <span className="ml-1 shrink-0 rounded-full bg-slate-700 text-slate-300 px-1.5 py-0.5 text-[10px] font-mono font-semibold leading-none">
-            {task.story_points}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ColumnSection({ column, tasks }: { column: SprintColumn; tasks: SprintTask[] }) {
-  return (
-    <div className="mb-3">
-      <div className="flex items-center gap-1.5 mb-1">
-        <span
-          className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${COLUMN_BADGE_COLORS[column]}`}
-        >
-          {column}
-        </span>
-        <span className="text-[10px] text-slate-500 font-mono">{tasks.length}</span>
-      </div>
-      {tasks.length === 0 ? (
-        <p className="text-[10px] text-slate-600 italic pl-1">No tasks</p>
-      ) : (
-        tasks.map((t) => <TaskCard key={t.task_id} task={t} />)
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
 
 export function ScrumPanel() {
-  const events = useSessionStore((s) => s.events);
+  const events = useSessionStore(s => s.events);
+  const [tab, setTab] = useState<Tab>('board');
 
-  const { sprintGoal, tasks, totalPoints, donePoints, needsHumanInput } = useMemo(
-    () => deriveSprintData(events),
-    [events],
-  );
+  const data = useMemo(() => {
+    const tasks = new Map<string, Task>();
+    let sprintGoal = '';
+    const messages: { time: string; agent: string; text: string; type: string }[] = [];
+    const retros: string[] = [];
+    const blockers: string[] = [];
+    let totalTokens = 0;
+    let totalCost = 0;
+    let needsHuman = false;
 
-  const doneTasks = tasks.filter((t) => t.column === 'DONE').length;
-  const totalTasks = tasks.length;
-  const progressPct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+    for (const ev of events) {
+      const p = pl(ev);
+      const agent = ev.agent_id ?? 'system';
+      const time = new Date(ev.timestamp).toLocaleTimeString();
+
+      if (ev.event_type === 'task_assigned') {
+        const id = p.task_id as string ?? '';
+        if (!sprintGoal && p.sprint_goal) sprintGoal = p.sprint_goal as string;
+        tasks.set(id, {
+          id,
+          title: p.description as string ?? '',
+          assignee: p.assigned_to as string ?? agent,
+          points: p.story_points as number ?? 0,
+          status: 'in_progress',
+        });
+      }
+
+      if (ev.event_type === 'task_completed') {
+        const id = p.task_id as string ?? '';
+        const task = tasks.get(id);
+        if (task) {
+          task.status = (p.status as string ?? 'done') as Task['status'];
+        }
+      }
+
+      if (ev.event_type === 'agent_message_sent') {
+        const content = p.content as string ?? '';
+        const msgType = content.match(/WELL:|IMPROVE:/) ? 'retro'
+          : content.match(/blocked|need human|waiting|permission/i) ? 'blocker'
+          : content.match(/sprint|goal|backlog|planning/i) ? 'planning'
+          : 'chat';
+
+        messages.push({ time, agent, text: content, type: msgType });
+
+        if (msgType === 'retro') retros.push(`${agent}: ${content}`);
+        if (msgType === 'blocker') { blockers.push(`${agent}: ${content}`); needsHuman = true; }
+      }
+
+      if (ev.event_type === 'token_usage_updated') {
+        totalTokens += (p.total_tokens as number) ?? 0;
+      }
+      if (ev.event_type === 'cost_estimate_updated') {
+        totalCost = Math.max(totalCost, (p.cumulative_cost_usd as number) ?? 0);
+      }
+    }
+
+    const taskList = Array.from(tasks.values());
+    const donePoints = taskList.filter(t => t.status === 'done').reduce((a, t) => a + t.points, 0);
+    const totalPoints = taskList.reduce((a, t) => a + t.points, 0);
+
+    return { tasks: taskList, sprintGoal, messages, retros, blockers, needsHuman, totalTokens, totalCost, donePoints, totalPoints };
+  }, [events]);
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: 'board', label: 'Board' },
+    { id: 'log', label: 'Log' },
+    { id: 'retro', label: 'Retro' },
+    { id: 'metrics', label: 'Metrics' },
+  ];
 
   return (
-    <div className="w-[280px] max-h-full flex flex-col bg-slate-900 text-slate-100 rounded-lg border border-slate-700/60 overflow-hidden">
-      {/* Header */}
-      <div className="px-3 pt-3 pb-2 border-b border-slate-700/60">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
-          Sprint Board
-        </h2>
+    <div className="flex flex-col h-full bg-slate-50">
+      {/* Sprint Goal */}
+      {data.sprintGoal && (
+        <div className="px-3 py-2 bg-blue-50 border-b border-blue-100">
+          <div className="text-[10px] font-bold text-blue-500 uppercase">Sprint Goal</div>
+          <div className="text-xs text-blue-800 leading-snug">{data.sprintGoal}</div>
+        </div>
+      )}
 
-        {sprintGoal && (
-          <p className="text-[11px] text-slate-300 leading-snug mb-2">
-            {truncate(sprintGoal, 60)}
-          </p>
-        )}
-
-        {/* Progress bar */}
-        <div className="mb-1.5">
-          <div className="flex items-center justify-between text-[10px] text-slate-400 mb-0.5">
-            <span>
-              {doneTasks}/{totalTasks} tasks
-            </span>
-            <span>{progressPct}%</span>
+      {/* Progress bar */}
+      {data.totalPoints > 0 && (
+        <div className="px-3 py-2 border-b border-slate-200">
+          <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+            <span>{data.donePoints}/{data.totalPoints} pts</span>
+            <span>{Math.round(data.donePoints / data.totalPoints * 100)}%</span>
           </div>
-          <div className="h-1.5 rounded-full bg-slate-700 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-              style={{ width: `${progressPct}%` }}
-            />
+          <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div className="h-full bg-green-500 rounded-full transition-all duration-500"
+              style={{ width: `${(data.donePoints / data.totalPoints) * 100}%` }} />
           </div>
         </div>
+      )}
 
-        {/* Story points */}
-        <div className="flex items-center justify-between text-[10px] text-slate-400">
-          <span>Story points</span>
-          <span className="font-mono">
-            <span className="text-emerald-400">{donePoints}</span>
-            <span className="text-slate-600 mx-0.5">/</span>
-            <span>{totalPoints}</span>
-          </span>
+      {/* Human input alert */}
+      {data.needsHuman && (
+        <div className="px-3 py-2 bg-red-50 border-b border-red-200 flex items-center gap-2">
+          <span className="text-red-500 font-bold text-sm">!</span>
+          <span className="text-xs text-red-700 font-semibold">Needs Human Input</span>
         </div>
+      )}
 
-        {/* Human input indicator */}
-        {needsHumanInput && (
-          <div className="mt-2 flex items-center gap-1.5 rounded bg-red-900/50 border border-red-700/60 px-2 py-1">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-            </span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-red-300">
-              Needs Human Input
-            </span>
+      {/* Tabs */}
+      <div className="flex border-b border-slate-200">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`flex-1 py-2 text-[11px] font-semibold transition-colors ${
+              tab === t.id ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-slate-400 hover:text-slate-600'
+            }`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto">
+        {tab === 'board' && <BoardTab tasks={data.tasks} />}
+        {tab === 'log' && <LogTab messages={data.messages} />}
+        {tab === 'retro' && <RetroTab retros={data.retros} blockers={data.blockers} />}
+        {tab === 'metrics' && <MetricsTab data={data} />}
+      </div>
+    </div>
+  );
+}
+
+function BoardTab({ tasks }: { tasks: Task[] }) {
+  const cols: { status: Task['status']; label: string; color: string }[] = [
+    { status: 'backlog', label: 'BACKLOG', color: 'border-l-slate-400' },
+    { status: 'in_progress', label: 'IN PROGRESS', color: 'border-l-blue-500' },
+    { status: 'review', label: 'REVIEW', color: 'border-l-purple-500' },
+    { status: 'done', label: 'DONE', color: 'border-l-green-500' },
+  ];
+
+  return (
+    <div className="p-2 space-y-3">
+      {cols.map(col => {
+        const items = tasks.filter(t => t.status === col.status);
+        return (
+          <div key={col.status}>
+            <div className="text-[10px] font-bold text-slate-400 uppercase mb-1 flex justify-between">
+              <span>{col.label}</span>
+              <span className="text-slate-300">{items.length}</span>
+            </div>
+            {items.length === 0 ? (
+              <div className="text-[10px] text-slate-300 italic px-2">empty</div>
+            ) : items.map(t => (
+              <div key={t.id} className={`border-l-2 ${col.color} bg-white rounded px-2 py-1.5 mb-1 shadow-sm`}>
+                <div className="text-[11px] font-medium text-slate-700 leading-snug">{t.title}</div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px] text-slate-400">{t.assignee.replace('agent-', '')}</span>
+                  <span className="text-[9px] bg-blue-100 text-blue-600 px-1 rounded font-bold">{t.points}pts</span>
+                </div>
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+        );
+      })}
+    </div>
+  );
+}
 
-      {/* Board columns (vertical, scrollable) */}
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-0">
-        {totalTasks === 0 ? (
-          <p className="text-xs text-slate-500 italic text-center py-6">
-            No sprint tasks detected yet.
-          </p>
-        ) : (
-          COLUMN_ORDER.map((col) => (
-            <ColumnSection
-              key={col}
-              column={col}
-              tasks={tasks.filter((t) => t.column === col)}
-            />
-          ))
-        )}
+function LogTab({ messages }: { messages: { time: string; agent: string; text: string; type: string }[] }) {
+  const typeColors: Record<string, string> = {
+    retro: 'text-purple-600', blocker: 'text-red-600', planning: 'text-blue-600', chat: 'text-slate-600',
+  };
+  const typeIcons: Record<string, string> = {
+    retro: '🔄', blocker: '🚫', planning: '📋', chat: '💬',
+  };
+
+  return (
+    <div className="p-2 space-y-1">
+      {messages.length === 0 ? (
+        <div className="text-xs text-slate-400 text-center py-4">No messages yet</div>
+      ) : messages.map((m, i) => (
+        <div key={i} className="flex gap-1.5 text-[11px] py-1 border-b border-slate-100 last:border-0">
+          <span className="flex-shrink-0">{typeIcons[m.type] ?? '📋'}</span>
+          <div className="min-w-0">
+            <div className="flex gap-2 items-baseline">
+              <span className="font-bold text-slate-700 text-[10px]">{m.agent.replace('agent-', '')}</span>
+              <span className="text-[9px] text-slate-400">{m.time}</span>
+            </div>
+            <div className={`${typeColors[m.type] ?? 'text-slate-600'} leading-snug`}>{m.text}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RetroTab({ retros, blockers }: { retros: string[]; blockers: string[] }) {
+  return (
+    <div className="p-2 space-y-3">
+      <div>
+        <div className="text-[10px] font-bold text-red-500 uppercase mb-1">Blockers</div>
+        {blockers.length === 0 ? (
+          <div className="text-[10px] text-slate-400 italic">None</div>
+        ) : blockers.map((b, i) => (
+          <div key={i} className="text-[11px] text-red-700 bg-red-50 rounded px-2 py-1 mb-1">{b.replace('agent-', '')}</div>
+        ))}
       </div>
+      <div>
+        <div className="text-[10px] font-bold text-purple-500 uppercase mb-1">Retro Actions</div>
+        {retros.length === 0 ? (
+          <div className="text-[10px] text-slate-400 italic">No retro items yet</div>
+        ) : retros.map((r, i) => (
+          <div key={i} className={`text-[11px] rounded px-2 py-1 mb-1 ${
+            r.includes('WELL') ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'
+          }`}>{r.replace('agent-', '')}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MetricsTab({ data }: { data: { totalTokens: number; totalCost: number; tasks: Task[]; donePoints: number; totalPoints: number } }) {
+  const velocity = data.donePoints;
+  const burnRate = data.totalPoints > 0 ? Math.round((data.donePoints / data.totalPoints) * 100) : 0;
+
+  return (
+    <div className="p-3 space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <MetricCard label="Velocity" value={`${velocity} pts`} color="text-blue-600" />
+        <MetricCard label="Burn Rate" value={`${burnRate}%`} color="text-green-600" />
+        <MetricCard label="Total Tokens" value={data.totalTokens.toLocaleString()} color="text-purple-600" />
+        <MetricCard label="Cost" value={`$${data.totalCost.toFixed(4)}`} color="text-amber-600" />
+        <MetricCard label="Stories Done" value={`${data.tasks.filter(t => t.status === 'done').length}/${data.tasks.length}`} color="text-emerald-600" />
+        <MetricCard label="Points Done" value={`${data.donePoints}/${data.totalPoints}`} color="text-cyan-600" />
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div className="bg-white rounded-lg p-2 border border-slate-100 shadow-sm">
+      <div className="text-[9px] text-slate-400 uppercase font-bold">{label}</div>
+      <div className={`text-sm font-bold ${color} mt-0.5`}>{value}</div>
     </div>
   );
 }

@@ -8,66 +8,64 @@ import type { CanonicalEvent } from '@amc/shared';
 
 export function useWebSocket() {
   const clientRef = useRef<WSClient | null>(null);
-  const loadedSessionRef = useRef<string | null>(null);
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const activeSessionRef = useRef<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { setConnected, addEvent, loadEvents, activeSessionId, sessions } = useSessionStore();
+  const activeRef = useRef(activeSessionId);
+  activeRef.current = activeSessionId;
 
-  // Track active session for filtering in the subscriber
-  activeSessionRef.current = activeSessionId;
-
-  // WebSocket connection — receives ALL events, filters client-side
+  // WebSocket connection for real-time events
   useEffect(() => {
     const client = new WSClient();
     clientRef.current = client;
-
     const unsub = client.subscribe((msg) => {
       if (msg.type === 'event') {
         const event = msg.data as CanonicalEvent;
-        // Only process events for the active session
-        if (activeSessionRef.current && event.session_id !== activeSessionRef.current) return;
+        if (activeRef.current && event.session_id !== activeRef.current) return;
         if (seenIdsRef.current.has(event.event_id)) return;
         seenIdsRef.current.add(event.event_id);
         addEvent(event);
       }
     });
-
-    const interval = setInterval(() => {
-      setConnected(client.connected);
-    }, 1000);
-
+    const interval = setInterval(() => setConnected(client.connected), 1000);
     client.connect();
-    // Don't subscribe to any specific session — receive ALL events
-    // Client-side filtering handles showing the right session
-
-    return () => {
-      unsub();
-      clearInterval(interval);
-      client.disconnect();
-    };
+    return () => { unsub(); clearInterval(interval); client.disconnect(); };
   }, [setConnected, addEvent]);
 
-  // When session changes
+  // Session change handler + REST polling for live sessions
   useEffect(() => {
+    // Clean up previous poll
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (!activeSessionId) return;
-    if (loadedSessionRef.current === activeSessionId) return;
-    loadedSessionRef.current = activeSessionId;
-    seenIdsRef.current.clear();
 
+    seenIdsRef.current.clear();
     const session = sessions.find(s => s.id === activeSessionId);
     const isLive = session && !session.ended_at;
 
     if (isLive) {
-      // LIVE session: clear and stream events via WebSocket in real-time
+      // LIVE: poll REST API every 1.5s for reliable real-time updates
       loadEvents([]);
+      pollRef.current = setInterval(() => {
+        api.getEvents({ session_id: activeSessionId, limit: 5000 }).then((events) => {
+          const typed = events as CanonicalEvent[];
+          if (typed.length > 0) {
+            for (const e of typed) seenIdsRef.current.add(e.event_id);
+            loadEvents(typed);
+          }
+        }).catch(() => {});
+      }, 1500);
     } else {
-      // ENDED session: bulk-load all historical events
+      // ENDED: bulk-load all events
       api.getEvents({ session_id: activeSessionId, limit: 5000 }).then((events) => {
         const typed = events as CanonicalEvent[];
         for (const e of typed) seenIdsRef.current.add(e.event_id);
         loadEvents(typed);
       }).catch(() => {});
     }
+
+    return () => {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    };
   }, [activeSessionId, sessions, loadEvents]);
 
   return clientRef;
