@@ -8,13 +8,13 @@ import type { CanonicalEvent } from '@amc/shared';
 
 export function useWebSocket() {
   const clientRef = useRef<WSClient | null>(null);
-  const seenIdsRef = useRef<Set<string>>(new Set());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastEventCountRef = useRef(0);
   const { setConnected, addEvent, loadEvents, activeSessionId, sessions } = useSessionStore();
   const activeRef = useRef(activeSessionId);
   activeRef.current = activeSessionId;
 
-  // WebSocket connection for real-time events
+  // WebSocket connection
   useEffect(() => {
     const client = new WSClient();
     clientRef.current = client;
@@ -22,8 +22,6 @@ export function useWebSocket() {
       if (msg.type === 'event') {
         const event = msg.data as CanonicalEvent;
         if (activeRef.current && event.session_id !== activeRef.current) return;
-        if (seenIdsRef.current.has(event.event_id)) return;
-        seenIdsRef.current.add(event.event_id);
         addEvent(event);
       }
     });
@@ -32,41 +30,43 @@ export function useWebSocket() {
     return () => { unsub(); clearInterval(interval); client.disconnect(); };
   }, [setConnected, addEvent]);
 
-  // Session change handler + REST polling for live sessions
+  // Session change + polling
   useEffect(() => {
-    // Clean up previous poll
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (!activeSessionId) return;
 
-    seenIdsRef.current.clear();
+    lastEventCountRef.current = 0;
     const session = sessions.find(s => s.id === activeSessionId);
     const isLive = session && !session.ended_at;
 
+    // Initial load for ALL sessions (live or ended)
+    api.getEvents({ session_id: activeSessionId, limit: 5000 }).then((events) => {
+      const typed = events as CanonicalEvent[];
+      lastEventCountRef.current = typed.length;
+      loadEvents(typed);
+    }).catch(() => {});
+
+    // For live sessions, poll for NEW events only (append, don't replace)
     if (isLive) {
-      // LIVE: poll REST API every 1.5s for reliable real-time updates
-      loadEvents([]);
       pollRef.current = setInterval(() => {
         api.getEvents({ session_id: activeSessionId, limit: 5000 }).then((events) => {
           const typed = events as CanonicalEvent[];
-          if (typed.length > 0) {
-            for (const e of typed) seenIdsRef.current.add(e.event_id);
-            loadEvents(typed);
+          if (typed.length > lastEventCountRef.current) {
+            // Only add the new events, don't replace
+            const newEvents = typed.slice(lastEventCountRef.current);
+            for (const ev of newEvents) {
+              addEvent(ev);
+            }
+            lastEventCountRef.current = typed.length;
           }
         }).catch(() => {});
       }, 1500);
-    } else {
-      // ENDED: bulk-load all events
-      api.getEvents({ session_id: activeSessionId, limit: 5000 }).then((events) => {
-        const typed = events as CanonicalEvent[];
-        for (const e of typed) seenIdsRef.current.add(e.event_id);
-        loadEvents(typed);
-      }).catch(() => {});
     }
 
     return () => {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
-  }, [activeSessionId, sessions, loadEvents]);
+  }, [activeSessionId, sessions, loadEvents, addEvent]);
 
   return clientRef;
 }
