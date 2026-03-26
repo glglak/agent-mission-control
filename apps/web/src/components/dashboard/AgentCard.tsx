@@ -69,41 +69,8 @@ export function AgentCard({ agent }: AgentCardProps) {
             Task: <span className="text-slate-700">{agent.currentTask}</span>
           </div>
         )}
-        <div className="flex gap-3 mt-2 pt-2 border-t border-slate-100">
-          <span>
-            Tokens:{' '}
-            <span className="font-mono text-slate-500">
-              {(agent.tokenUsage.promptTokens + agent.tokenUsage.completionTokens).toLocaleString()}
-            </span>
-          </span>
-          {agent.heatIntensity > 0 && (
-            <span>
-              Heat:{' '}
-              <span
-                className="font-mono"
-                style={{
-                  color: `hsl(${(1 - agent.heatIntensity) * 60}, 80%, 40%)`,
-                }}
-              >
-                {(agent.heatIntensity * 100).toFixed(0)}%
-              </span>
-            </span>
-          )}
-        </div>
       </div>
 
-      {/* Heat bar at bottom */}
-      {agent.heatIntensity > 0 && (
-        <div className="mt-3 h-1 bg-slate-100 rounded-full overflow-hidden">
-          <div
-            className="h-full rounded-full transition-all duration-500"
-            style={{
-              width: `${agent.heatIntensity * 100}%`,
-              backgroundColor: `hsl(${(1 - agent.heatIntensity) * 60}, 80%, 50%)`,
-            }}
-          />
-        </div>
-      )}
     </div>
   );
 }

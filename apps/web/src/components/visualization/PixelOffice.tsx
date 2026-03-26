@@ -250,15 +250,16 @@ function drawFlicker(ctx:CanvasRenderingContext2D,f:number){
 }
 
 // === HUD ===
-function drawHUD(ctx:CanvasRenderingContext2D,agents:AgentState[],tokenUsage:{totalPromptTokens:number;totalCompletionTokens:number;totalCostUsd:number},f:number){
+function drawHUD(ctx:CanvasRenderingContext2D,agents:AgentState[],f:number){
   // Bottom bar
   ctx.fillStyle='rgba(0,0,0,0.75)';ctx.fillRect(0,H-20,W,20);
   ctx.font='bold 8px monospace';ctx.textAlign='left';
   ctx.fillStyle='#fff';
   ctx.fillText(`AGENTS: ${agents.length}`,6,H-8);
-  const totalTok=tokenUsage.totalPromptTokens+tokenUsage.totalCompletionTokens;
-  ctx.fillText(`TOKENS: ${totalTok.toLocaleString()}`,100,H-8);
-  ctx.fillText(`COST: $${tokenUsage.totalCostUsd.toFixed(4)}`,230,H-8);
+  const active=agents.filter(a=>a.visualState==='working'||a.visualState==='thinking').length;
+  const blocked=agents.filter(a=>a.visualState==='blocked').length;
+  ctx.fillStyle='#3b82f6';ctx.fillText(`ACTIVE: ${active}`,100,H-8);
+  if(blocked>0){ctx.fillStyle='#ef4444';ctx.fillText(`BLOCKED: ${blocked}`,200,H-8);}
   // Live dot
   if(agents.length>0&&f%40<25){ctx.fillStyle='#22c55e';ctx.fillRect(350,H-15,6,6);}
   // Per-room counts
@@ -418,14 +419,28 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
           const fname = fp ? fp.split(/[/\\]/).pop() ?? '' : '';
           agentStatus.set(aid, fname ? `${tn} ${fname}` : tn);
         }
-        // Speech bubble: last notification/message (within 30s)
-        if (!agentBubble.has(aid) && (ev.event_type === 'agent_message_sent')) {
+        // Speech bubble: last message, tool call, or result (within 30s)
+        if (!agentBubble.has(aid)) {
           const pl = ev.payload as Record<string,unknown>|undefined;
-          const content = (pl?.content as string) ?? '';
           const evTime = new Date(ev.timestamp).getTime();
           const age = (now - evTime) / 1000;
-          if (age < 30 && content) {
-            agentBubble.set(aid, { text: content.slice(0, 40), age });
+          if (age < 30) {
+            let content = '';
+            if (ev.event_type === 'agent_message_sent') {
+              content = (pl?.content as string) ?? '';
+            } else if (ev.event_type === 'tool_called') {
+              const tn = (pl?.tool_name as string) ?? '';
+              const fp = (pl?.file_path as string) ?? '';
+              const fname = fp ? fp.split(/[/\\]/).pop() ?? '' : '';
+              content = fname ? `${tn}: ${fname}` : tn;
+            } else if (ev.event_type === 'tool_result') {
+              const tn = (pl?.tool_name as string) ?? '';
+              const ok = pl?.success !== false;
+              content = ok ? `${tn} done` : `${tn} failed!`;
+            }
+            if (content) {
+              agentBubble.set(aid, { text: content.slice(0, 40), age });
+            }
           }
         }
       }
@@ -574,7 +589,7 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
         ctx.fillText('AGENT HEAVEN',4,8);
       }
 
-      drawHUD(ctx,agents,ws.tokenUsage,f);
+      drawHUD(ctx,agents,f);
       ctx.restore();
 
       fRef.current++;
@@ -617,8 +632,6 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
             <div className="grid grid-cols-2 gap-1 text-slate-300 mb-2">
               <div>Status: <span className="font-semibold" style={{color:STATE_CLR[tooltip.agent.visualState]}}>{STATE_LABEL[tooltip.agent.visualState]}</span></div>
               <div>Zone: <span className="text-white capitalize">{tooltip.agent.zone}</span></div>
-              <div>Prompt: <span className="text-white font-mono">{tooltip.agent.tokenUsage.promptTokens.toLocaleString()}</span></div>
-              <div>Completion: <span className="text-white font-mono">{tooltip.agent.tokenUsage.completionTokens.toLocaleString()}</span></div>
             </div>
             {tooltip.agent.currentTask&&(
               <div className="text-slate-400 mb-2 bg-slate-800 rounded px-2 py-1">

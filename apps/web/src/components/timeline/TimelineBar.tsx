@@ -9,7 +9,6 @@ const eventDotColors: Partial<Record<EventType, string>> = {
   [EventType.ToolCalled]: '#d97706',
   [EventType.FileEdited]: '#ea580c',
   [EventType.AgentMessageSent]: '#059669',
-  [EventType.TokenUsageUpdated]: '#7c3aed',
 };
 
 export function TimelineBar() {
@@ -40,14 +39,14 @@ export function TimelineBar() {
         </span>
       </div>
       <div className="relative h-6 bg-slate-100 rounded-full overflow-hidden">
-        {events.map((event) => {
+        {events.map((event, i) => {
           const ts = new Date(event.timestamp).getTime();
           const pct = ((ts - firstTs) / duration) * 100;
           const color = eventDotColors[event.event_type as EventType] ?? '#94a3b8';
 
           return (
             <div
-              key={event.event_id}
+              key={`${event.event_id}-${i}`}
               className="absolute top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full"
               style={{
                 left: `${pct}%`,

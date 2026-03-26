@@ -43,20 +43,6 @@ export function AgentInspector({ worldState }: AgentInspectorProps) {
         </div>
       </div>
 
-      <div className="p-4 border-b border-slate-200">
-        <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Token Usage</h4>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <span className="text-slate-400">Prompt:</span>{' '}
-            <span className="font-mono text-blue-600">{agent.tokenUsage.promptTokens.toLocaleString()}</span>
-          </div>
-          <div>
-            <span className="text-slate-400">Completion:</span>{' '}
-            <span className="font-mono text-purple-600">{agent.tokenUsage.completionTokens.toLocaleString()}</span>
-          </div>
-        </div>
-      </div>
-
       <div className="flex-1 overflow-y-auto p-4">
         <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Recent Events</h4>
         <div className="space-y-1">

@@ -61,12 +61,6 @@ export function ActivityFeed() {
         text = `Done: ${desc}`;
         color = 'text-green-300'; break;
       }
-      case 'token_usage_updated': {
-        const total = payload?.total_tokens as number ?? 0;
-        icon = '🪙';
-        text = `${total.toLocaleString()} tokens (${payload?.model ?? ''})`;
-        color = 'text-purple-400'; break;
-      }
       default:
         text = ev.event_type; break;
     }

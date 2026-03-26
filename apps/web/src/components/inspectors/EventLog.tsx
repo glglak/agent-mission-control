@@ -12,7 +12,6 @@ const eventTypeColors: Partial<Record<EventType, string>> = {
   [EventType.ToolCalled]: 'text-amber-600',
   [EventType.ToolResult]: 'text-amber-500',
   [EventType.FileEdited]: 'text-orange-600',
-  [EventType.TokenUsageUpdated]: 'text-purple-600',
   [EventType.AgentMessageSent]: 'text-emerald-500',
 };
 

@@ -31,8 +31,6 @@ export function ScrumPanel() {
     const messages: { time: string; agent: string; text: string; type: string }[] = [];
     const retros: string[] = [];
     const blockers: string[] = [];
-    let totalTokens = 0;
-    let totalCost = 0;
     let recentBlocker = false;
 
     // Explicit task tracking (from simulations)
@@ -112,8 +110,6 @@ export function ScrumPanel() {
         if (a) a.messages.push(content);
       }
 
-      if (ev.event_type === 'token_usage_updated') totalTokens += (p.total_tokens as number) ?? 0;
-      if (ev.event_type === 'cost_estimate_updated') totalCost = Math.max(totalCost, (p.cumulative_cost_usd as number) ?? 0);
     }
 
     const agentList = Array.from(agents.values());
@@ -127,7 +123,7 @@ export function ScrumPanel() {
     const totalPoints = taskList.reduce((a, t) => a + t.points, 0);
 
     return { agents: agentList, tasks: taskList, hasExplicitTasks, sprintGoal, messages, retros, blockers,
-      needsHuman: recentBlocker, totalTokens, totalCost, doneCount, totalCount, donePoints, totalPoints };
+      needsHuman: recentBlocker, doneCount, totalCount, donePoints, totalPoints };
   }, [events]);
 
   const tabs: { id: Tab; label: string }[] = [
@@ -308,7 +304,7 @@ function RetroTab({ retros, blockers }: { retros: string[]; blockers: string[] }
   );
 }
 
-function MetricsTab({ data }: { data: { totalTokens: number; totalCost: number; agents: AgentTask[]; doneCount: number; totalCount: number; donePoints: number; totalPoints: number } }) {
+function MetricsTab({ data }: { data: { agents: AgentTask[]; doneCount: number; totalCount: number; donePoints: number; totalPoints: number } }) {
   const totalTools = data.agents.reduce((a, ag) => a + ag.toolCalls, 0);
   const totalFiles = new Set(data.agents.flatMap(a => a.filesEdited)).size;
 
@@ -318,8 +314,6 @@ function MetricsTab({ data }: { data: { totalTokens: number; totalCost: number; 
         <MC label="Agents" value={`${data.agents.length}`} color="text-blue-600" />
         <MC label="Tool Calls" value={`${totalTools}`} color="text-cyan-600" />
         <MC label="Files Touched" value={`${totalFiles}`} color="text-purple-600" />
-        <MC label="Tokens" value={data.totalTokens.toLocaleString()} color="text-amber-600" />
-        <MC label="Cost" value={`$${data.totalCost.toFixed(4)}`} color="text-red-600" />
         {data.totalPoints > 0 && <MC label="Story Points" value={`${data.donePoints}/${data.totalPoints}`} color="text-green-600" />}
         <MC label="Done" value={`${data.doneCount}/${data.totalCount}`} color="text-emerald-600" />
         <MC label="Completion" value={`${data.totalCount > 0 ? Math.round(data.doneCount/data.totalCount*100) : 0}%`} color="text-indigo-600" />

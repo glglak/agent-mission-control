@@ -7,8 +7,6 @@ import { StatusBar } from '@/components/dashboard/StatusBar';
 import { SessionList } from '@/components/dashboard/SessionList';
 import { AgentGrid } from '@/components/dashboard/AgentGrid';
 import { CommunicationGraph } from '@/components/graphs/CommunicationGraph';
-import { TokenUsageChart } from '@/components/graphs/TokenUsageChart';
-import { CostDashboard } from '@/components/graphs/CostDashboard';
 import { PixelOfficeWrapper } from '@/components/visualization/PixelOfficeWrapper';
 import { AgentInspector } from '@/components/inspectors/AgentInspector';
 import { FileActivityInspector } from '@/components/inspectors/FileActivityInspector';
@@ -71,15 +69,13 @@ export default function DashboardPage() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <CommunicationGraph worldState={worldState} />
-                  <TokenUsageChart worldState={worldState} />
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  <CostDashboard worldState={worldState} />
                   <FileActivityInspector worldState={worldState} />
                 </div>
 
-                <EventLog />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <ActivityFeed />
+                  <EventLog />
+                </div>
               </>
             )}
 

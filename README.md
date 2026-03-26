@@ -10,10 +10,14 @@ Agent Mission Control captures telemetry from Claude Code sessions via hooks, no
 
 - **Pixel-art office visualization** — Agents appear as characters sitting at desks in themed rooms (Dev Area, QA Lab, Planning, Review, Coffee Shop)
 - **Real-time event streaming** — Watch tool calls, file edits, and agent communication as they happen
-- **Token & cost tracking** — Per-agent and total prompt/completion token counts with USD cost estimates
+- **Speech bubbles** — See what each agent is doing right now (editing files, running bash, reading code)
+- **Fired agents** — Agents that fail float to "Agent Heaven" with halos and angel wings
 - **Session replay** — Replay any past session and watch the timeline unfold
-- **Clickable agents** — Click any character to see their status, token usage, and recent activity
+- **Scrum board** — Board, Log, Retro, and Metrics tabs for sprint-style tracking
+- **Clickable agents** — Click any character to see their status, zone, and recent activity
 - **Multi-session support** — Switch between active and historical sessions
+- **Sub-agent hierarchy** — See parent-child relationships between agents with visual connection lines
+- **Human interaction alerts** — Blocked agents show a "?" badge when they need human input
 
 ![Pixel Office](screenshots/pixel-office.png)
 
@@ -28,9 +32,9 @@ Telemetry Bridge (Fastify, port 4700)
     |--- WebSocket (real-time broadcast)
     v
 Web Dashboard (Next.js, port 3700)
-    |--- Simulation Engine (state management)
+    |--- Event Engine (state management)
     |--- Pixel Art Canvas (visualization)
-    |--- Recharts (graphs & analytics)
+    |--- Scrum Panel (project tracking)
 ```
 
 ### Packages
@@ -58,25 +62,20 @@ cd agent-mission-control
 npm install
 ```
 
-### 2. Build all packages
+### 2. Start the dev server
 
 ```bash
-npm run build
+npm run dev
 ```
 
-### 3. Start the services
+This starts both the telemetry bridge (port 4700) and the web dashboard (port 3700).
 
-Open **two terminals** in the project root:
+Alternatively, start them separately:
 
 **Terminal 1 — Telemetry Bridge:**
 ```bash
 cd packages/telemetry-bridge
 npx tsx src/index.ts
-```
-
-You should see:
-```
-Telemetry bridge listening on port 4700
 ```
 
 **Terminal 2 — Web Dashboard:**
@@ -87,9 +86,7 @@ npx next dev --port 3700
 
 Then open **http://localhost:3700** in your browser.
 
-> **Tip:** You can also use `bash tools/scripts/dev.sh` to start both at once (Linux/macOS).
-
-### 4. Configure Claude Code hooks
+### 3. Configure Claude Code hooks
 
 Add the AMC telemetry hooks to your Claude Code configuration. Edit `~/.claude/settings.json` and merge in the hooks:
 
@@ -214,7 +211,7 @@ Add the AMC telemetry hooks to your Claude Code configuration. Edit `~/.claude/s
 
 > **Important:** Hooks are loaded when a Claude Code session starts. You must **start a new session** after saving settings.json for hooks to take effect.
 
-### 5. Verify it works
+### 4. Verify it works
 
 1. Confirm the bridge is healthy:
    ```bash
@@ -232,28 +229,6 @@ Add the AMC telemetry hooks to your Claude Code configuration. Edit `~/.claude/s
 
 ![Live Session](screenshots/live-session.png)
 
-## Try the Demo Simulation
-
-Don't want to wait for real Claude Code activity? Run the built-in simulation with 10 agents, a manager, coffee breaks, inter-agent communication, and dramatic firings:
-
-```bash
-npx tsx tools/scripts/simulate.ts
-```
-
-Options:
-```bash
-npx tsx tools/scripts/simulate.ts --fast    # Quick run (~15 seconds)
-npx tsx tools/scripts/simulate.ts           # Real-time pacing (~60 seconds)
-```
-
-The simulation creates a session with:
-- 10 worker agents + 1 manager ("The Boss")
-- Agents work across Dev Area, QA Lab, Planning, and Review zones
-- Random coffee breaks (agents visit the Coffee Shop)
-- Inter-agent communication (messages, PR reviews, pair requests)
-- The Boss fires the lowest-performing agent (they float to the sky with a halo)
-- Token usage and cost tracking with realistic Anthropic pricing
-
 ## Dashboard Features
 
 ### Views
@@ -263,15 +238,31 @@ Toggle between views using the buttons in the header:
 | View | Description |
 |------|-------------|
 | **3D** | Full-screen pixel art office visualization |
-| **Dashboard** | Agent cards, token charts, cost dashboard, event log |
+| **Dashboard** | Agent cards, communication graph, file activity, event log |
 | **Split** | Both views stacked |
 
-### Pixel Office Interactions
+### Pixel Office
 
-- **Click an agent** to see their tooltip: name, status, zone, tokens, recent activity
+- **Click an agent** to see their tooltip: name, status, zone, recent activity
+- **Speech bubbles** show what agents are doing in real-time (tool calls, messages, results)
 - **Replay button** (top-right) appears for ended sessions — replays events progressively
-- **Bottom HUD** shows total agent count, token total, and cumulative cost
+- **Bottom HUD** shows total agent count, active/blocked counts, and live indicator
 - **Room labels** identify each zone (Dev Area, Coffee Shop, QA Lab, Planning, Review)
+- **Connection beams** show agent-to-agent communication with animated particles
+- **Sub-agent lines** show parent-child hierarchy between spawned agents
+- **Fired agents** float to "Agent Heaven" at the top with halos and angel wings
+- **Human interaction badges** appear as "?" when agents are blocked and need input
+
+### Scrum Panel
+
+The right sidebar provides sprint-style tracking with four tabs:
+
+| Tab | Description |
+|-----|-------------|
+| **Board** | Kanban-style board showing agent tasks and status |
+| **Log** | Chronological message log with categorized entries |
+| **Retro** | Retrospective items from agent communications |
+| **Metrics** | Agents, tool calls, files touched, completion stats |
 
 ### Session Sidebar
 
@@ -279,6 +270,21 @@ Toggle between views using the buttons in the header:
 - Green pulsing dot = LIVE session
 - Gray dot = ended session
 - Project path shown below session name
+
+## Try the Demo Simulation
+
+Want to see the dashboard in action without a live Claude Code session? Run the built-in simulation:
+
+```bash
+npx tsx tools/scripts/simulate.ts           # Real-time pacing (~60 seconds)
+npx tsx tools/scripts/simulate.ts --fast    # Quick run (~15 seconds)
+```
+
+Additional simulations:
+```bash
+npx tsx tools/scripts/simulate-scrum.ts       # Full Scrum sprint with ceremonies
+npx tsx tools/scripts/simulate-cinematic.ts   # Cinematic demo for recordings
+```
 
 ## API Reference
 
@@ -325,13 +331,12 @@ agent-mission-control/
         app/                # Pages
         components/         # UI components
           visualization/    # Pixel office, 3D scene
-          dashboard/        # Cards, session list, status bar
-          graphs/           # Charts and analytics
+          dashboard/        # Cards, session list, scrum panel
+          graphs/           # Communication graph, file activity
           inspectors/       # Agent inspector, event log
-          timeline/         # Replay controls
+          timeline/         # Timeline bar
         hooks/              # useWebSocket, useSimulation
         stores/             # Zustand state management
-        lib/                # API client, WebSocket client
   packages/
     shared/                 # Event types, Zod schemas, protocol
     simulation-engine/      # World state, reducers, zones, replay
@@ -340,7 +345,9 @@ agent-mission-control/
     hooks-config.json       # Reference hook configuration
     scripts/
       dev.sh                # Start both services
-      simulate.ts           # Demo simulation script
+      simulate.ts           # Demo simulation (10 agents)
+      simulate-scrum.ts     # Scrum sprint simulation
+      simulate-cinematic.ts # Cinematic demo simulation
 ```
 
 ## Troubleshooting
