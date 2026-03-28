@@ -323,7 +323,7 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
       if (!allEvents.length) { setIsReplaying(false); return; }
       loadEvents([]);
       const total = allEvents.length;
-      const batchSize = Math.max(1, Math.floor(total / 60)); // ~60 frames over ~3 seconds
+      const batchSize = Math.max(1, Math.floor(total / 180)); // ~180 frames over ~9 seconds
       let i = 0;
       const step = () => {
         i = Math.min(i + batchSize, total);
