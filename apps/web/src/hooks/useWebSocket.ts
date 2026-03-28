@@ -44,7 +44,7 @@ export function useWebSocket() {
       const typed = events as CanonicalEvent[];
       lastEventCountRef.current = typed.length;
       loadEvents(typed);
-    }).catch(() => {});
+    }).catch((err) => console.warn('AMC: fetch failed', err.message));
 
     // For live sessions, poll for NEW events only (append, don't replace)
     if (isLive) {
@@ -59,7 +59,7 @@ export function useWebSocket() {
             }
             lastEventCountRef.current = typed.length;
           }
-        }).catch(() => {});
+        }).catch((err) => console.warn('AMC: fetch failed', err.message));
       }, 1500);
     }
 

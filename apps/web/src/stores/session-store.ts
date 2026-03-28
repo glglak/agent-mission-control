@@ -38,7 +38,12 @@ export const useSessionStore = create<SessionState>((set) => ({
 
   events: [],
   addEvent: (event) =>
-    set((state) => ({ events: [...state.events.slice(-999), event] })),
+    set((state) => {
+      if (event.event_id && state.events.some((e) => e.event_id === event.event_id)) {
+        return state;
+      }
+      return { events: [...state.events.slice(-999), event] };
+    }),
   loadEvents: (events) => set({ events }),
   clearEvents: () => set({ events: [] }),
 }));

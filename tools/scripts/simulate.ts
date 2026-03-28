@@ -3,7 +3,7 @@
  * Run: npx tsx tools/scripts/simulate.ts [--fast]
  */
 
-const BRIDGE = 'http://localhost:4700/api/collect/claude-code';
+const BRIDGE = process.env.BRIDGE_URL ?? 'http://localhost:4700/api/collect/claude-code';
 const SESSION_ID = `sim-${Date.now()}`;
 const isFast = process.argv.includes('--fast');
 
@@ -240,7 +240,21 @@ async function endSession() {
 
 // --- Main ---
 
+async function healthCheck() {
+  const healthUrl = BRIDGE.replace(/\/api\/collect\/claude-code$/, '/api/health');
+  try {
+    const res = await fetch(healthUrl);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    console.log('  Bridge is running.\n');
+  } catch (err) {
+    console.error(`  ERROR: Bridge not reachable at ${healthUrl}`);
+    console.error('  Start it with: npm run dev --workspace=packages/telemetry-bridge\n');
+    process.exit(1);
+  }
+}
+
 async function main() {
+  await healthCheck();
   await startSession();
   await sleep(delay(500, 200));
   await registerAll();

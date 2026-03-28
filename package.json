@@ -1,5 +1,11 @@
 {
   "name": "agent-mission-control",
+  "description": "Real-time visualization dashboard for AI coding agents",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/glglak/agent-mission-control.git"
+  },
   "private": true,
   "packageManager": "npm@10.1.0",
   "workspaces": [

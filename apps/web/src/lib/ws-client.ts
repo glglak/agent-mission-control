@@ -2,6 +2,8 @@ import type { ServerMessage, ClientMessage } from '@amc/shared';
 
 type MessageHandler = (msg: ServerMessage) => void;
 
+const wsBase = process.env.NEXT_PUBLIC_BRIDGE_URL?.replace(/^http/, 'ws') ?? 'ws://localhost:4700';
+
 export class WSClient {
   private ws: WebSocket | null = null;
   private url: string;
@@ -11,7 +13,7 @@ export class WSClient {
   private maxReconnectDelay = 30000;
   private shouldReconnect = true;
 
-  constructor(url: string = 'ws://localhost:4700/ws') {
+  constructor(url: string = wsBase + '/ws') {
     this.url = url;
   }
 

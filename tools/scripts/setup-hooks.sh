@@ -19,7 +19,7 @@ fi
 
 echo ""
 echo "To connect Claude Code to Agent Mission Control, configure your hooks"
-echo "to POST events to: $BRIDGE_URL/hooks/claude-code"
+echo "to POST events to: $BRIDGE_URL/api/collect/claude-code"
 echo ""
 echo "Example hook configuration:"
-echo '  {"url": "'$BRIDGE_URL'/hooks/claude-code", "events": ["*"]}'
+echo '  {"type": "http", "url": "'$BRIDGE_URL'/api/collect/claude-code", "timeout": 5}'

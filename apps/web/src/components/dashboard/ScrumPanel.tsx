@@ -41,7 +41,7 @@ export function ScrumPanel() {
       const aid = ev.agent_id ?? 'system';
       const time = new Date(ev.timestamp).toLocaleTimeString();
 
-      // Track explicit tasks (simulation)
+      // Track explicit tasks
       if (ev.event_type === 'task_assigned') {
         const id = p.task_id as string ?? '';
         if (!sprintGoal && p.sprint_goal) sprintGoal = p.sprint_goal as string;
@@ -54,6 +54,26 @@ export function ScrumPanel() {
         const id = p.task_id as string ?? '';
         const t = explicitTasks.get(id);
         if (t) t.status = (p.status as string) ?? 'done';
+      }
+
+      // Detect sprint goal from agent messages (real sessions)
+      if (!sprintGoal && ev.event_type === 'agent_message_sent') {
+        const content = (p.content as string) ?? '';
+        const goalMatch = content.match(/SPRINT GOAL:\s*(.+)/i);
+        if (goalMatch) sprintGoal = goalMatch[1].trim();
+      }
+
+      // Detect task assignments from agent messages (real sessions — "ASSIGNED: US1 - title — Npts — to Agent")
+      if (ev.event_type === 'agent_message_sent') {
+        const content = (p.content as string) ?? '';
+        const assignMatch = content.match(/ASSIGNED:\s*(US\d+)\s*[-—]\s*(.+?)(?:\s*[-—]\s*(\d+)\s*(?:story\s*)?points?)?(?:\s*[-—]\s*to\s+(\w+))?$/i);
+        if (assignMatch) {
+          const id = assignMatch[1];
+          const title = assignMatch[2].trim();
+          const points = parseInt(assignMatch[3] ?? '0', 10);
+          const assignee = assignMatch[4] ?? aid;
+          explicitTasks.set(id, { id, title, assignee, points, status: 'in_progress' });
+        }
       }
 
       // Track agents (works for REAL Claude sessions)

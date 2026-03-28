@@ -52,15 +52,15 @@ const STATE_LABEL: Record<string, string> = {
 interface RoomDef { id: string; zone: AgentZone; x: number; y: number; w: number; h: number; floor: string; label: string; desks: {x:number;y:number}[]; }
 const ROOMS: RoomDef[] = [
   { id:'coding', zone:AgentZone.Coding, x:1,y:1,w:19,h:12, floor:'wood', label:'DEV AREA',
-    desks:[{x:4,y:4},{x:9,y:4},{x:14,y:4},{x:4,y:9},{x:9,y:9},{x:14,y:9}] },
+    desks:[{x:3,y:4},{x:7,y:4},{x:11,y:4},{x:15,y:4},{x:3,y:9},{x:7,y:9},{x:11,y:9},{x:15,y:9}] },
   { id:'coffee', zone:AgentZone.Idle, x:22,y:1,w:19,h:12, floor:'tile', label:'COFFEE SHOP',
-    desks:[{x:25,y:5},{x:29,y:5},{x:33,y:5},{x:25,y:9},{x:29,y:9},{x:33,y:9}] },
+    desks:[{x:24,y:5},{x:28,y:5},{x:32,y:5},{x:36,y:5},{x:24,y:9},{x:28,y:9},{x:32,y:9},{x:36,y:9}] },
   { id:'planning', zone:AgentZone.Planning, x:1,y:15,w:12,h:12, floor:'dark', label:'PLANNING',
-    desks:[{x:4,y:18},{x:8,y:18},{x:4,y:23},{x:8,y:23}] },
+    desks:[{x:3,y:18},{x:7,y:18},{x:11,y:18},{x:3,y:23},{x:7,y:23},{x:11,y:23}] },
   { id:'testing', zone:AgentZone.Testing, x:15,y:15,w:13,h:12, floor:'green', label:'QA LAB',
-    desks:[{x:18,y:18},{x:23,y:18},{x:18,y:23},{x:23,y:23}] },
+    desks:[{x:17,y:18},{x:21,y:18},{x:25,y:18},{x:17,y:23},{x:21,y:23},{x:25,y:23}] },
   { id:'review', zone:AgentZone.Review, x:29,y:15,w:12,h:12, floor:'blue', label:'REVIEW',
-    desks:[{x:32,y:18},{x:36,y:18},{x:32,y:23},{x:36,y:23}] },
+    desks:[{x:31,y:18},{x:35,y:18},{x:39,y:18},{x:31,y:23},{x:35,y:23},{x:39,y:23}] },
 ];
 const ZONE_ROOM: Record<string,string> = {
   [AgentZone.Coding]:'coding',[AgentZone.Testing]:'testing',
@@ -318,7 +318,8 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
     if (!activeSessionId || isReplaying) return;
     setIsReplaying(true);
     try {
-      const allEvents = await (await fetch(`http://localhost:4700/api/events?session_id=${activeSessionId}&limit=5000`)).json() as CanonicalEvent[];
+      const bridgeUrl = process.env.NEXT_PUBLIC_BRIDGE_URL ?? 'http://localhost:4700';
+      const allEvents = await (await fetch(`${bridgeUrl}/api/events?session_id=${activeSessionId}&limit=5000`)).json() as CanonicalEvent[];
       if (!allEvents.length) { setIsReplaying(false); return; }
       loadEvents([]);
       const total = allEvents.length;
@@ -523,9 +524,10 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
         ctx.fillRect(fp.x+(tp.x-fp.x)*t+4,fp.y+(tp.y-fp.y)*t+4,4,4);
       }
 
-      // Detect fired agents and parent-child relationships from events
+      // Detect fired/dismissed agents and parent-child relationships from events
       const firedIds=new Set<string>();
       const parentMap=new Map<string,string>(); // child → parent
+      const agentNames=new Map<string,string>(); // id → name
       for(const ev of eventsRef.current){
         if(ev.event_type==='agent_completed'){
           const p=ev.payload as Record<string,unknown>|undefined;
@@ -534,6 +536,21 @@ export function PixelOffice({ worldState }: { worldState: WorldState }) {
         if(ev.event_type==='agent_registered'){
           const p=ev.payload as Record<string,unknown>|undefined;
           if(p?.parent_agent_id)parentMap.set(ev.agent_id??'',p.parent_agent_id as string);
+          if(p?.name)agentNames.set(ev.agent_id??'',(p.name as string).toLowerCase());
+        }
+        // Detect "fired" or "dismissed" from messages (real agent teams)
+        if(ev.event_type==='agent_message_sent'){
+          const p=ev.payload as Record<string,unknown>|undefined;
+          const content=((p?.content as string)??'').toLowerCase();
+          if(content.match(/\b(fired|dismissed|let go|terminated|released)\b/)){
+            // Check if message mentions a specific agent by name
+            for(const[aid,name]of agentNames){
+              if(content.includes(name))firedIds.add(aid);
+            }
+            // Also fire the target agent if specified
+            const toId=p?.to_agent_id as string;
+            if(toId&&toId!=='user')firedIds.add(toId);
+          }
         }
       }
 

@@ -28,7 +28,7 @@ export function SessionList() {
             selectSession(newest.id);
           }
         }
-      }).catch(() => {});
+      }).catch((err) => console.warn('AMC: session fetch failed', err.message));
     };
     fetchSessions();
     const interval = setInterval(fetchSessions, 1500);

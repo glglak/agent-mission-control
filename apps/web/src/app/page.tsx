@@ -76,11 +76,10 @@ export default function DashboardPage() {
                   <ActivityFeed />
                   <EventLog />
                 </div>
+
+                <TimelineBar />
               </>
             )}
-
-
-            <TimelineBar />
           </div>
         </main>
 
@@ -105,8 +104,8 @@ function ViewToggle({
   onChange: (v: 'dashboard' | '3d' | 'split') => void;
 }) {
   const options = [
-    { value: 'dashboard' as const, label: '2D' },
-    { value: '3d' as const, label: '3D' },
+    { value: 'dashboard' as const, label: 'Dashboard' },
+    { value: '3d' as const, label: 'Office' },
     { value: 'split' as const, label: 'Split' },
   ];
 

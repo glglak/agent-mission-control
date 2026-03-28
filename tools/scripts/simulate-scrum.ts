@@ -6,7 +6,7 @@
  * Run: npx tsx tools/scripts/simulate-scrum.ts
  */
 
-const BRIDGE = 'http://localhost:4700/api/collect/claude-code';
+const BRIDGE = process.env.BRIDGE_URL ?? 'http://localhost:4700/api/collect/claude-code';
 const SESSION_ID = `sprint-${Date.now()}`;
 
 // === TEAM (Scrum roles) ===
@@ -396,7 +396,21 @@ async function phase8_wrapup() {
 }
 
 // ═══════════════════════════════════════════════════════
+async function healthCheck() {
+  const healthUrl = BRIDGE.replace(/\/api\/collect\/claude-code$/, '/api/health');
+  try {
+    const res = await fetch(healthUrl);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    console.log('  Bridge is running.\n');
+  } catch (err) {
+    console.error(`  ERROR: Bridge not reachable at ${healthUrl}`);
+    console.error('  Start it with: npm run dev --workspace=packages/telemetry-bridge\n');
+    process.exit(1);
+  }
+}
+
 async function main() {
+  await healthCheck();
   console.log('\n  🏃 SCRUM SPRINT SIMULATION');
   console.log(`  Session: ${SESSION_ID}`);
   console.log(`  Goal: ${SPRINT_GOAL}\n`);

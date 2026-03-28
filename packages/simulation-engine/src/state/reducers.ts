@@ -14,10 +14,24 @@ const CONNECTION_DECAY_PER_SEC = 1 / (CONNECTION_MAX_AGE_MS / 1000);
 const FILE_GLOW_HALF_LIFE_MS = 10_000;
 
 const TEST_TOOL_PATTERNS = ['test', 'pytest', 'jest', 'vitest', 'mocha', 'spec'];
+const REVIEW_TOOL_PATTERNS = ['read', 'grep', 'glob', 'search'];
 
-function isTestTool(toolName: string): boolean {
+function detectZone(toolName: string, filePath?: string): AgentZone {
   const lower = toolName.toLowerCase();
-  return TEST_TOOL_PATTERNS.some((p) => lower.includes(p));
+  const pathLower = (filePath ?? '').toLowerCase();
+  // Test files or test tools → QA Lab
+  if (TEST_TOOL_PATTERNS.some(p => lower.includes(p)) || pathLower.includes('test') || pathLower.includes('spec')) {
+    return AgentZone.Testing;
+  }
+  // Read-only tools → Review zone
+  if (REVIEW_TOOL_PATTERNS.some(p => lower === p)) {
+    return AgentZone.Review;
+  }
+  // Planning-related
+  if (lower.includes('plan') || pathLower.includes('readme') || pathLower.includes('doc')) {
+    return AgentZone.Planning;
+  }
+  return AgentZone.Coding;
 }
 
 function cloneAgents(agents: Map<string, AgentState>): Map<string, AgentState> {
@@ -173,11 +187,11 @@ export function reduce(state: WorldState, event: CanonicalEvent): WorldState {
       const agent = agents.get(agentId);
       if (agent) {
         const toolName = (payload.tool_name as string) ?? '';
-        agent.zone = isTestTool(toolName) ? AgentZone.Testing : AgentZone.Coding;
+        const filePath = payload.file_path as string | undefined;
+        agent.zone = detectZone(toolName, filePath);
         agent.visualState = AgentVisualState.Working;
         agent.lastEventTimestamp = timestamp;
 
-        const filePath = payload.file_path as string | undefined;
         if (filePath) {
           upsertFileNode(fileNodes, filePath, agentId, timestamp, false);
         }
@@ -252,14 +266,14 @@ export function reduce(state: WorldState, event: CanonicalEvent): WorldState {
     case EventType.AgentCompleted: {
       const agent = agents.get(agentId);
       if (agent) {
-        // Keep zone — preserve last working position for historical view
-        // Only mark as idle visual state, don't reset zone or tokens
         const success = payload.success as boolean ?? true;
         if (!success) {
           // Agent was "fired" — mark as blocked for dramatic effect
           agent.visualState = AgentVisualState.Blocked;
         } else {
+          // Completed agents go to coffee shop (idle zone)
           agent.visualState = AgentVisualState.Idle;
+          agent.zone = AgentZone.Idle;
         }
         agent.currentTask = null;
         agent.lastEventTimestamp = timestamp;
@@ -271,6 +285,7 @@ export function reduce(state: WorldState, event: CanonicalEvent): WorldState {
       const agent = agents.get(agentId);
       if (agent) {
         agent.visualState = AgentVisualState.Communicating;
+        agent.zone = AgentZone.Planning;
         agent.lastEventTimestamp = timestamp;
       }
       const toAgentId = payload.to_agent_id as string | undefined;

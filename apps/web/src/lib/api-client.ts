@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:4700';
+const BASE_URL = process.env.NEXT_PUBLIC_BRIDGE_URL ?? 'http://localhost:4700';
 
 async function fetchJSON<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`);

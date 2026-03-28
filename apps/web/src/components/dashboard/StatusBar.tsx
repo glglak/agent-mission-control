@@ -1,11 +1,21 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useSessionStore } from '@/stores/session-store';
 
 export function StatusBar() {
   const connected = useSessionStore((s) => s.connected);
-  const eventCount = useSessionStore((s) => s.events.length);
-  const agentCount = useSessionStore((s) => s.agents.length);
+  const events = useSessionStore((s) => s.events);
+  const eventCount = events.length;
+  const agentCount = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of events) {
+      if (e.event_type === 'agent_registered' && e.agent_id) {
+        ids.add(e.agent_id);
+      }
+    }
+    return ids.size;
+  }, [events]);
 
   return (
     <div className="flex items-center gap-4 px-4 py-2 bg-white shadow-sm text-sm">
