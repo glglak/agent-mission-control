@@ -57,7 +57,7 @@ export default function DashboardPage() {
         {/* Main area */}
         <main className="flex-1 flex flex-col overflow-hidden bg-amc-panel">
           <div className="flex-1 overflow-auto p-4 space-y-4">
-            {/* 3D / Dashboard view */}
+            {/* Office / Dashboard view */}
             {(view === '3d' || view === 'split') && (
               <div style={{ height: view === '3d' ? 'calc(100vh - 140px)' : '50vh' }}>
                 <PixelOfficeWrapper worldState={worldState} />

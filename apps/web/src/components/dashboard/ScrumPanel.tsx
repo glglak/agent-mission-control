@@ -33,7 +33,7 @@ export function ScrumPanel() {
     const blockers: string[] = [];
     let recentBlocker = false;
 
-    // Explicit task tracking (from simulations)
+    // Explicit task tracking (from task_assigned events)
     const explicitTasks = new Map<string, { id: string; title: string; assignee: string; points: number; status: string }>();
 
     for (const ev of events) {
@@ -210,7 +210,7 @@ export function ScrumPanel() {
 
 function BoardTab({ agents, tasks, hasExplicit }: { agents: AgentTask[]; tasks: { id: string; title: string; assignee: string; points: number; status: string }[]; hasExplicit: boolean }) {
   if (hasExplicit) {
-    // Simulation mode: show kanban columns
+    // Kanban mode: show task columns when explicit tasks exist
     const cols: { status: string; label: string; color: string }[] = [
       { status: 'in_progress', label: 'IN PROGRESS', color: 'border-l-blue-500' },
       { status: 'review', label: 'REVIEW', color: 'border-l-purple-500' },
@@ -240,7 +240,7 @@ function BoardTab({ agents, tasks, hasExplicit }: { agents: AgentTask[]; tasks: 
     );
   }
 
-  // Real session mode: show agent activity cards
+  // Default mode: show agent activity cards
   return (
     <div className="p-2 space-y-1.5">
       <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Active Agents ({agents.length})</div>

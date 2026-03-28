@@ -6,18 +6,25 @@ Real-time visualization and telemetry dashboard for AI coding agents. Watch your
 
 ## What It Does
 
-Agent Mission Control captures telemetry from Claude Code sessions via hooks, normalizes events into a canonical format, persists them to a database, and broadcasts them in real-time to a web dashboard featuring:
+Agent Mission Control captures telemetry from Claude Code sessions via hooks, normalizes events into a canonical format, persists them to a database, and broadcasts them in real-time to a web dashboard.
 
-- **Pixel-art office visualization** — Agents appear as characters sitting at desks in themed rooms (Dev Area, QA Lab, Planning, Review, Coffee Shop)
-- **Real-time event streaming** — Watch tool calls, file edits, and agent communication as they happen
-- **Speech bubbles** — See what each agent is doing right now (editing files, running bash, reading code)
-- **Fired agents** — Agents that fail float to "Agent Heaven" with halos and angel wings
+All data is driven by real Claude Code hooks — every visualization, metric, and insight comes from actual agent activity.
+
+### Core Features
+
+- **Pixel-art office visualization** — Agents appear as animated characters in themed rooms (Dev Area, QA Lab, Planning, Review, Coffee Shop). Agents move between zones based on what they're doing
+- **Speech bubbles** — See what each agent is doing right now: tool calls, file edits, messages to other agents
+- **Behavior insights** — Anomaly detection (stuck loops, high failure rates), per-agent profiling, tool breakdown, file hotspots, communication flow analysis
+- **Scrum board** — Sprint goal tracking, task assignments, log, retrospective items, and team metrics
+- **Live activity feed** — Terminal-style stream of real-time events
 - **Session replay** — Replay any past session and watch the timeline unfold
-- **Scrum board** — Board, Log, Retro, and Metrics tabs for sprint-style tracking
-- **Clickable agents** — Click any character to see their status, zone, and recent activity
+- **Communication graph** — Visualize agent-to-agent message network
+- **File activity inspector** — See which files agents are reading and editing
 - **Multi-session support** — Switch between active and historical sessions
-- **Sub-agent hierarchy** — See parent-child relationships between agents with visual connection lines
-- **Human interaction alerts** — Blocked agents show a "?" badge when they need human input
+- **Clickable agents** — Click any character for status, zone, and recent activity
+- **Sub-agent hierarchy** — Visual connection lines between parent and child agents
+- **Fired agents** — Agents dismissed by a team lead float to "Agent Heaven" with halos
+- **Human interaction alerts** — Blocked agents show a "?" badge when they need input
 
 ![Pixel Office](screenshots/pixel-office.png)
 
@@ -32,19 +39,20 @@ Telemetry Bridge (Fastify, port 4700)
     |--- WebSocket (real-time broadcast)
     v
 Web Dashboard (Next.js, port 3700)
-    |--- Event Engine (state management)
-    |--- Pixel Art Canvas (visualization)
-    |--- Scrum Panel (project tracking)
+    |--- State Engine (event reduction, world state)
+    |--- Pixel Art Canvas (office visualization)
+    |--- Analytics (behavior insights, anomaly detection)
+    |--- Scrum Panel (sprint tracking)
 ```
 
 ### Packages
 
 | Package | Description |
 |---------|-------------|
-| `packages/shared` | Event schemas (Zod), TypeScript types, WebSocket protocol |
+| `packages/shared` | Event schemas (Zod), TypeScript types, constants |
 | `packages/telemetry-bridge` | Fastify API server, SQLite storage, WebSocket broadcaster |
-| `packages/simulation-engine` | World state management, event reducers, zone layout, replay |
-| `apps/web` | Next.js dashboard with pixel art office and analytics |
+| `packages/simulation-engine` | State engine — event reducers, world state, zone layout, replay |
+| `apps/web` | Next.js dashboard with pixel office, analytics, and scrum panel |
 
 ## Quick Start
 
@@ -237,8 +245,8 @@ Toggle between views using the buttons in the header:
 
 | View | Description |
 |------|-------------|
-| **3D** | Full-screen pixel art office visualization |
-| **Dashboard** | Agent cards, communication graph, file activity, event log |
+| **Office** | Full-screen pixel art office visualization |
+| **Dashboard** | Agent cards, behavior insights, communication graph, file activity, event log |
 | **Split** | Both views stacked |
 
 ### Pixel Office
@@ -246,12 +254,22 @@ Toggle between views using the buttons in the header:
 - **Click an agent** to see their tooltip: name, status, zone, recent activity
 - **Speech bubbles** show what agents are doing in real-time (tool calls, messages, results)
 - **Replay button** (top-right) appears for ended sessions — replays events progressively
-- **Bottom HUD** shows total agent count, active/blocked counts, and live indicator
+- **Bottom HUD** shows agent count, active/blocked counts, and live indicator
 - **Room labels** identify each zone (Dev Area, Coffee Shop, QA Lab, Planning, Review)
 - **Connection beams** show agent-to-agent communication with animated particles
 - **Sub-agent lines** show parent-child hierarchy between spawned agents
-- **Fired agents** float to "Agent Heaven" at the top with halos and angel wings
-- **Human interaction badges** appear as "?" when agents are blocked and need input
+- **Fired agents** float to "Agent Heaven" with halos and angel wings
+- **Human interaction badges** appear as "?" when agents are blocked
+
+### Behavior Insights
+
+The analytics panel provides real-time behavior analysis computed from hook events:
+
+- **KPI overview** — Total tool calls, success rate, messages sent, files touched
+- **Anomaly detection** — Stuck loops (same tool+file repeated 5+ times), high failure rates (>30%), silent agents (no communication), over-reading without edits
+- **Agent profiles** — Per-agent tool breakdown with color-coded bars, behavior badges (Collaborator, Thorough, Fast mover, Solo, Zero errors), expandable detail view
+- **File hotspots** — Most-edited files with multi-agent conflict detection
+- **Communication flow** — Who messages whom and how often, with visual bars
 
 ### Scrum Panel
 
@@ -259,10 +277,12 @@ The right sidebar provides sprint-style tracking with four tabs:
 
 | Tab | Description |
 |-----|-------------|
-| **Board** | Kanban-style board showing agent tasks and status |
+| **Board** | Task cards from sprint assignments, or agent activity cards |
 | **Log** | Chronological message log with categorized entries |
-| **Retro** | Retrospective items from agent communications |
-| **Metrics** | Agents, tool calls, files touched, completion stats |
+| **Retro** | Retrospective items (WELL/IMPROVE) and blockers |
+| **Metrics** | Agent count, tool calls, files touched, completion stats |
+
+The Scrum Panel automatically detects sprint goals, task assignments, and retro items from agent messages.
 
 ### Session Sidebar
 
@@ -271,16 +291,26 @@ The right sidebar provides sprint-style tracking with four tabs:
 - Gray dot = ended session
 - Project path shown below session name
 
-## Try the Demo Simulation
+## Works Best With Claude Code Teams
 
-Want to see the dashboard in action without a live Claude Code session? Run the built-in simulation:
+Agent Mission Control is designed to shine with Claude Code's multi-agent teams feature. When multiple agents collaborate on a project, AMC shows:
+
+- Each agent as a separate character in the pixel office
+- Agents moving between zones as they code, test, review, and plan
+- Communication beams when agents message each other
+- Sprint progress as tasks get assigned and completed
+- Behavior patterns and anomalies across the team
+
+## Try the Demo
+
+Want to see the dashboard in action without a live Claude Code session? Run the built-in demo:
 
 ```bash
-npx tsx tools/scripts/simulate.ts           # Real-time pacing (~60 seconds)
-npx tsx tools/scripts/simulate.ts --fast    # Quick run (~15 seconds)
+npx tsx tools/scripts/simulate.ts           # 10-agent office (~60 seconds)
+npx tsx tools/scripts/simulate.ts --fast    # Quick demo (~15 seconds)
 ```
 
-Additional simulations:
+Additional demos:
 ```bash
 npx tsx tools/scripts/simulate-scrum.ts       # Full Scrum sprint with ceremonies
 npx tsx tools/scripts/simulate-cinematic.ts   # Cinematic demo for recordings
@@ -302,24 +332,23 @@ The telemetry bridge exposes a REST API:
 
 ## Configuration
 
-Environment variables for the telemetry bridge:
+Environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `4700` | HTTP server port |
+| `PORT` | `4700` | Telemetry bridge HTTP port |
 | `DB_PATH` | `./amc.db` | SQLite database file path |
 | `WS_PATH` | `/ws` | WebSocket endpoint path |
+| `NEXT_PUBLIC_BRIDGE_URL` | `http://localhost:4700` | Bridge URL for the web dashboard |
 
 ## Team / Multi-Developer Setup
 
 For a shared team dashboard:
 
 1. **Deploy the bridge** to a shared server accessible to all developers
-2. **Update hook URLs** in each developer's `~/.claude/settings.json` to point to the shared server (e.g., `http://amc.internal:4700/api/collect/claude-code`)
-3. **Deploy the web dashboard** — either on the same server or separately, configured to connect to the bridge
+2. **Update hook URLs** in each developer's `~/.claude/settings.json` to point to the shared server
+3. **Set `NEXT_PUBLIC_BRIDGE_URL`** on the web dashboard to point to the bridge
 4. Each developer's sessions appear automatically with their project path visible
-
-For user identification, you can wrap the hook with a script that adds a `user_id` field, or identify developers by their session metadata (project path, machine name).
 
 ## Project Structure
 
@@ -329,25 +358,22 @@ agent-mission-control/
     web/                    # Next.js dashboard (port 3700)
       src/
         app/                # Pages
-        components/         # UI components
-          visualization/    # Pixel office, 3D scene
-          dashboard/        # Cards, session list, scrum panel
-          graphs/           # Communication graph, file activity
-          inspectors/       # Agent inspector, event log
+        components/
+          analytics/        # Behavior insights, anomaly detection
+          visualization/    # Pixel office canvas
+          dashboard/        # Agent cards, session list, scrum panel
+          graphs/           # Communication graph
+          inspectors/       # Agent inspector, event log, file activity
           timeline/         # Timeline bar
-        hooks/              # useWebSocket, useSimulation
+        hooks/              # useWebSocket, useSimulation (state engine)
         stores/             # Zustand state management
   packages/
-    shared/                 # Event types, Zod schemas, protocol
-    simulation-engine/      # World state, reducers, zones, replay
+    shared/                 # Event types, Zod schemas, constants
+    simulation-engine/      # State engine — reducers, world state, zones, replay
     telemetry-bridge/       # Fastify server, SQLite, WebSocket
   tools/
     hooks-config.json       # Reference hook configuration
-    scripts/
-      dev.sh                # Start both services
-      simulate.ts           # Demo simulation (10 agents)
-      simulate-scrum.ts     # Scrum sprint simulation
-      simulate-cinematic.ts # Cinematic demo simulation
+    scripts/                # Demo scripts and utilities
 ```
 
 ## Troubleshooting
