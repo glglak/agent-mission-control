@@ -14,6 +14,7 @@ import { EventLog } from '@/components/inspectors/EventLog';
 import { TimelineBar } from '@/components/timeline/TimelineBar';
 import { ScrumPanel } from '@/components/dashboard/ScrumPanel';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
+import { BehaviorInsights } from '@/components/analytics/BehaviorInsights';
 
 export default function DashboardPage() {
   useWebSocket();
@@ -71,6 +72,8 @@ export default function DashboardPage() {
                   <CommunicationGraph worldState={worldState} />
                   <FileActivityInspector worldState={worldState} />
                 </div>
+
+                <BehaviorInsights />
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <ActivityFeed />
