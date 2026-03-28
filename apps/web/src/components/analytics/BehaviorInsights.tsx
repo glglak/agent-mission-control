@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useSessionStore } from '@/stores/session-store';
 import type { CanonicalEvent } from '@amc/shared';
 
@@ -25,7 +25,7 @@ interface AgentProfile {
   lastEvent: number;
   readBeforeEditRatio: number;
   uniqueContacts: Set<string>;
-  repetitions: Map<string, number>; // tool+file → count (loop detection)
+  repetitions: Map<string, number>;
 }
 
 interface Anomaly {
@@ -39,7 +39,7 @@ interface Anomaly {
 function analyzeEvents(events: CanonicalEvent[]) {
   const agents = new Map<string, AgentProfile>();
   const fileHotspots = new Map<string, { edits: number; agents: Set<string> }>();
-  const commPairs = new Map<string, number>(); // "a→b" → count
+  const commPairs = new Map<string, number>();
 
   function getAgent(id: string, name?: string): AgentProfile {
     if (!agents.has(id)) {
@@ -76,10 +76,7 @@ function analyzeEvents(events: CanonicalEvent[]) {
         const fp = (p.file_path as string) ?? '';
         if (fp) {
           const short = fp.split(/[/\\]/).pop() ?? fp;
-          if (tn === 'Read' || tn === 'Grep' || tn === 'Glob') {
-            a.filesRead.add(short);
-          }
-          // Loop detection
+          if (tn === 'Read' || tn === 'Grep' || tn === 'Glob') a.filesRead.add(short);
           const key = `${tn}:${short}`;
           a.repetitions.set(key, (a.repetitions.get(key) ?? 0) + 1);
         }
@@ -117,81 +114,68 @@ function analyzeEvents(events: CanonicalEvent[]) {
         }
         break;
       }
-      case 'agent_blocked': {
-        getAgent(aid).blockedCount++;
-        break;
-      }
-      case 'agent_idle': {
-        getAgent(aid).idleCount++;
-        break;
-      }
+      case 'agent_blocked': { getAgent(aid).blockedCount++; break; }
+      case 'agent_idle': { getAgent(aid).idleCount++; break; }
     }
   }
 
-  // Compute derived metrics
   for (const a of agents.values()) {
     const totalReads = a.filesRead.size;
     const totalEdits = a.filesEdited.size;
     a.readBeforeEditRatio = totalEdits > 0 ? totalReads / totalEdits : 0;
   }
 
-  // Detect anomalies
   const anomalies: Anomaly[] = [];
   for (const a of agents.values()) {
-    // Loop detection: same tool+file > 5 times
     for (const [key, count] of a.repetitions) {
       if (count >= 5) {
-        anomalies.push({
-          agentId: a.id, agentName: a.name, type: 'loop', severity: 'warning',
-          description: `Repeated ${key} ${count} times — possible stuck loop`,
-        });
+        anomalies.push({ agentId: a.id, agentName: a.name, type: 'loop', severity: 'warning',
+          description: `Repeated ${key.split(':')[0]} on ${key.split(':')[1]} ${count}x` });
       }
     }
-    // High failure rate
     const total = a.toolSuccess + a.toolFail;
     if (total >= 5 && a.toolFail / total > 0.3) {
-      anomalies.push({
-        agentId: a.id, agentName: a.name, type: 'high_failure', severity: 'warning',
-        description: `${Math.round(a.toolFail / total * 100)}% tool failure rate (${a.toolFail}/${total})`,
-      });
+      anomalies.push({ agentId: a.id, agentName: a.name, type: 'high_failure', severity: 'warning',
+        description: `${Math.round(a.toolFail / total * 100)}% failure rate (${a.toolFail}/${total} calls)` });
     }
-    // No communication (has tool calls but never sent messages, and other agents exist)
     if (a.toolCalls > 10 && a.messagesSent === 0 && agents.size > 1) {
-      anomalies.push({
-        agentId: a.id, agentName: a.name, type: 'no_communication', severity: 'info',
-        description: `${a.toolCalls} tool calls but no messages sent to other agents`,
-      });
+      anomalies.push({ agentId: a.id, agentName: a.name, type: 'no_communication', severity: 'info',
+        description: `${a.toolCalls} calls, 0 messages — working solo` });
     }
-    // Over-reading: reads >> edits
     if (a.filesRead.size > 10 && a.filesEdited.size === 0) {
-      anomalies.push({
-        agentId: a.id, agentName: a.name, type: 'over_reading', severity: 'info',
-        description: `Read ${a.filesRead.size} files but edited none — exploratory or stuck?`,
-      });
+      anomalies.push({ agentId: a.id, agentName: a.name, type: 'over_reading', severity: 'info',
+        description: `Read ${a.filesRead.size} files, edited none` });
     }
   }
 
-  // Top file hotspots
-  const hotspots = Array.from(fileHotspots.entries())
-    .sort((a, b) => b[1].edits - a[1].edits)
-    .slice(0, 8);
-
-  // Top communication pairs
-  const topComms = Array.from(commPairs.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
+  const hotspots = Array.from(fileHotspots.entries()).sort((a, b) => b[1].edits - a[1].edits).slice(0, 6);
+  const topComms = Array.from(commPairs.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
   return { agents: Array.from(agents.values()), anomalies, hotspots, topComms };
 }
 
+// === Tool color mapping ===
+const TOOL_COLORS: Record<string, { bg: string; text: string; bar: string }> = {
+  Read: { bg: 'bg-sky-100', text: 'text-sky-700', bar: 'bg-sky-500' },
+  Write: { bg: 'bg-emerald-100', text: 'text-emerald-700', bar: 'bg-emerald-500' },
+  Edit: { bg: 'bg-green-100', text: 'text-green-700', bar: 'bg-green-500' },
+  Bash: { bg: 'bg-amber-100', text: 'text-amber-700', bar: 'bg-amber-500' },
+  Grep: { bg: 'bg-violet-100', text: 'text-violet-700', bar: 'bg-violet-500' },
+  Glob: { bg: 'bg-purple-100', text: 'text-purple-700', bar: 'bg-purple-500' },
+  Agent: { bg: 'bg-pink-100', text: 'text-pink-700', bar: 'bg-pink-500' },
+};
+const DEFAULT_TOOL_COLOR = { bg: 'bg-slate-100', text: 'text-slate-600', bar: 'bg-slate-400' };
+
 export function BehaviorInsights() {
   const events = useSessionStore(s => s.events);
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
 
   const { agents, anomalies, hotspots, topComms } = useMemo(() => analyzeEvents(events), [events]);
 
   if (agents.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow-sm p-6 text-center">
+      <div className="bg-white rounded-lg shadow-sm p-8 text-center">
+        <div className="text-slate-300 text-3xl mb-2">~</div>
         <div className="text-slate-400 text-sm">No agent activity to analyze yet</div>
       </div>
     );
@@ -201,33 +185,43 @@ export function BehaviorInsights() {
   const totalFails = agents.reduce((s, a) => s + a.toolFail, 0);
   const totalMessages = agents.reduce((s, a) => s + a.messagesSent, 0);
   const totalFiles = new Set(agents.flatMap(a => [...a.filesEdited])).size;
+  const successRate = totalTools > 0 ? Math.round((1 - totalFails / totalTools) * 100) : 100;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 space-y-4">
-      <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
-        Behavior Insights
-      </h3>
-
-      {/* Overview stats */}
-      <div className="grid grid-cols-4 gap-2">
-        <Stat label="Tool Calls" value={totalTools} color="text-blue-600" />
-        <Stat label="Success Rate" value={`${totalTools > 0 ? Math.round((1 - totalFails / totalTools) * 100) : 0}%`} color={totalFails / Math.max(totalTools, 1) > 0.2 ? 'text-red-600' : 'text-green-600'} />
-        <Stat label="Messages" value={totalMessages} color="text-purple-600" />
-        <Stat label="Files Touched" value={totalFiles} color="text-amber-600" />
+    <div className="space-y-4">
+      {/* Header + KPIs */}
+      <div className="bg-white rounded-lg shadow-sm p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Behavior Insights</h3>
+          <span className="text-[10px] text-slate-400 font-mono">{events.length} events analyzed</span>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <KPI label="Agents" value={agents.length} icon="A" iconBg="bg-blue-500" />
+          <KPI label="Tool Calls" value={totalTools} icon="T" iconBg="bg-cyan-500" />
+          <KPI label="Success" value={`${successRate}%`} icon={successRate >= 90 ? '+' : '!'} iconBg={successRate >= 90 ? 'bg-green-500' : 'bg-red-500'} />
+          <KPI label="Messages" value={totalMessages} icon="M" iconBg="bg-purple-500" />
+          <KPI label="Files" value={totalFiles} icon="F" iconBg="bg-amber-500" />
+        </div>
       </div>
 
-      {/* Anomalies */}
+      {/* Anomalies banner — only if present */}
       {anomalies.length > 0 && (
-        <div>
-          <div className="text-xs font-semibold text-red-500 uppercase mb-1">Anomalies Detected</div>
-          <div className="space-y-1">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+          <div className="text-xs font-bold text-red-600 uppercase mb-2">
+            {anomalies.length} {anomalies.length === 1 ? 'Anomaly' : 'Anomalies'} Detected
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
             {anomalies.map((a, i) => (
-              <div key={i} className={`text-[11px] rounded px-2 py-1.5 flex items-start gap-2 ${
-                a.severity === 'warning' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'
+              <div key={i} className={`text-[11px] rounded-md px-2.5 py-1.5 flex items-center gap-2 ${
+                a.severity === 'warning' ? 'bg-white border border-red-200 text-red-700' : 'bg-white border border-amber-200 text-amber-700'
               }`}>
-                <span className="flex-shrink-0">{a.severity === 'warning' ? '!' : 'i'}</span>
-                <div>
-                  <span className="font-semibold">{a.agentName}:</span> {a.description}
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0 ${
+                  a.severity === 'warning' ? 'bg-red-500' : 'bg-amber-500'
+                }`}>{a.severity === 'warning' ? '!' : 'i'}</span>
+                <div className="min-w-0">
+                  <span className="font-bold">{a.agentName}</span>
+                  <span className="text-slate-400 mx-1">—</span>
+                  <span>{a.description}</span>
                 </div>
               </div>
             ))}
@@ -235,134 +229,190 @@ export function BehaviorInsights() {
         </div>
       )}
 
-      {/* Per-agent breakdown */}
-      <div>
-        <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Agent Profiles</div>
-        <div className="space-y-2">
-          {agents.sort((a, b) => b.toolCalls - a.toolCalls).map(a => {
-            const total = a.toolSuccess + a.toolFail;
-            const successRate = total > 0 ? Math.round(a.toolSuccess / total * 100) : 100;
-            const topTools = Array.from(a.toolBreakdown.entries())
-              .sort((x, y) => y[1] - x[1])
-              .slice(0, 3);
-            const activeTime = a.lastEvent > a.firstEvent ? Math.round((a.lastEvent - a.firstEvent) / 1000) : 0;
+      {/* Two-column layout: Agents left, Hotspots + Comms right */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Agent Profiles — 2 columns wide */}
+        <div className="lg:col-span-2 bg-white rounded-lg shadow-sm p-4">
+          <div className="text-xs font-semibold text-slate-400 uppercase mb-3">Agent Profiles</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {agents.sort((a, b) => b.toolCalls - a.toolCalls).map(a => {
+              const total = a.toolSuccess + a.toolFail;
+              const sr = total > 0 ? Math.round(a.toolSuccess / total * 100) : 100;
+              const topTools = Array.from(a.toolBreakdown.entries()).sort((x, y) => y[1] - x[1]).slice(0, 4);
+              const isExpanded = expandedAgent === a.id;
+              const activeTime = a.lastEvent > a.firstEvent ? Math.round((a.lastEvent - a.firstEvent) / 1000) : 0;
+              const badges = getBadges(a);
 
-            return (
-              <div key={a.id} className="bg-slate-50 rounded-lg p-2.5 border border-slate-100">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs font-bold text-slate-700">{a.name}</span>
-                  <span className="text-[10px] text-slate-400 font-mono">{activeTime > 0 ? `${activeTime}s active` : ''}</span>
-                </div>
-                <div className="grid grid-cols-4 gap-1 text-[10px] text-slate-500 mb-1.5">
-                  <span>{a.toolCalls} calls</span>
-                  <span className={successRate < 80 ? 'text-red-500 font-semibold' : ''}>{successRate}% ok</span>
-                  <span>{a.filesEdited.size} edits</span>
-                  <span>{a.messagesSent} msgs</span>
-                </div>
-                {/* Tool breakdown bar */}
-                {topTools.length > 0 && (
-                  <div className="flex h-2 rounded-full overflow-hidden bg-slate-200">
-                    {topTools.map(([name, count], i) => {
-                      const pct = a.toolCalls > 0 ? (count / a.toolCalls) * 100 : 0;
-                      const colors = ['bg-blue-500', 'bg-purple-500', 'bg-cyan-500'];
-                      return (
-                        <div key={name} className={`${colors[i % 3]} transition-all`}
-                          style={{ width: `${pct}%` }}
-                          title={`${name}: ${count} (${Math.round(pct)}%)`} />
-                      );
-                    })}
-                  </div>
-                )}
-                {topTools.length > 0 && (
-                  <div className="flex gap-2 mt-1">
-                    {topTools.map(([name, count], i) => {
-                      const colors = ['text-blue-600', 'text-purple-600', 'text-cyan-600'];
-                      return (
-                        <span key={name} className={`text-[9px] ${colors[i % 3]} font-mono`}>
-                          {name}: {count}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-                {/* Behavior indicators */}
-                <div className="flex gap-1 mt-1.5">
-                  {a.blockedCount > 0 && <Badge text={`Blocked ${a.blockedCount}x`} color="bg-red-100 text-red-600" />}
-                  {a.readBeforeEditRatio > 2 && <Badge text="Careful reader" color="bg-blue-100 text-blue-600" />}
-                  {a.readBeforeEditRatio === 0 && a.filesEdited.size > 0 && <Badge text="Edits without reading" color="bg-amber-100 text-amber-600" />}
-                  {a.uniqueContacts.size >= 3 && <Badge text="Collaborator" color="bg-green-100 text-green-600" />}
-                  {a.messagesSent === 0 && a.toolCalls > 5 && <Badge text="Solo worker" color="bg-slate-200 text-slate-500" />}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* File hotspots */}
-      {hotspots.length > 0 && (
-        <div>
-          <div className="text-xs font-semibold text-slate-400 uppercase mb-1">File Hotspots</div>
-          <div className="space-y-1">
-            {hotspots.map(([file, data]) => (
-              <div key={file} className="flex items-center gap-2 text-[11px]">
-                <div className="flex-1 flex items-center gap-1.5">
-                  <span className="font-mono text-slate-600 truncate">{file}</span>
-                  {data.agents.size > 1 && (
-                    <span className="text-[9px] bg-orange-100 text-orange-600 px-1 rounded font-semibold flex-shrink-0">
-                      {data.agents.size} agents
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-orange-500 rounded-full"
-                      style={{ width: `${Math.min(100, (data.edits / Math.max(...hotspots.map(h => h[1].edits))) * 100)}%` }} />
-                  </div>
-                  <span className="text-slate-400 font-mono w-6 text-right">{data.edits}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Communication flow */}
-      {topComms.length > 0 && (
-        <div>
-          <div className="text-xs font-semibold text-slate-400 uppercase mb-1">Communication Flow</div>
-          <div className="space-y-1">
-            {topComms.map(([pair, count]) => {
-              const [from, to] = pair.split('→');
-              const fromAgent = agents.find(a => a.id === from);
-              const toAgent = agents.find(a => a.id === to);
               return (
-                <div key={pair} className="flex items-center gap-1 text-[11px]">
-                  <span className="font-semibold text-blue-600 truncate">{fromAgent?.name ?? from.slice(0, 8)}</span>
-                  <span className="text-slate-300">→</span>
-                  <span className="font-semibold text-purple-600 truncate">{toAgent?.name ?? to.slice(0, 8)}</span>
-                  <span className="ml-auto text-slate-400 font-mono">{count}x</span>
+                <div key={a.id}
+                  className={`rounded-lg border transition-all cursor-pointer ${
+                    isExpanded ? 'border-blue-300 bg-blue-50/30 shadow-md' : 'border-slate-100 bg-slate-50 hover:border-slate-200'
+                  }`}
+                  onClick={() => setExpandedAgent(isExpanded ? null : a.id)}>
+                  {/* Compact header — always visible */}
+                  <div className="p-2.5">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold ${
+                        sr >= 90 ? 'bg-green-500' : sr >= 70 ? 'bg-amber-500' : 'bg-red-500'
+                      }`}>{sr}%</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-slate-700 truncate">{a.name}</div>
+                        <div className="text-[10px] text-slate-400">
+                          {a.toolCalls} calls · {a.filesEdited.size} files · {a.messagesSent} msgs
+                          {activeTime > 0 && ` · ${activeTime}s`}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Tool bar — compact */}
+                    {topTools.length > 0 && (
+                      <div className="flex h-1.5 rounded-full overflow-hidden bg-slate-200 mb-1.5">
+                        {topTools.map(([name, count]) => {
+                          const pct = a.toolCalls > 0 ? (count / a.toolCalls) * 100 : 0;
+                          const tc = TOOL_COLORS[name] ?? DEFAULT_TOOL_COLOR;
+                          return <div key={name} className={`${tc.bar}`} style={{ width: `${pct}%` }} title={`${name}: ${count}`} />;
+                        })}
+                      </div>
+                    )}
+
+                    {/* Badges */}
+                    {badges.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {badges.map((b, i) => <span key={i} className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${b.color}`}>{b.text}</span>)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Expanded detail */}
+                  {isExpanded && (
+                    <div className="border-t border-slate-200 p-2.5 space-y-2">
+                      {/* Tool breakdown with labels */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {topTools.map(([name, count]) => {
+                          const tc = TOOL_COLORS[name] ?? DEFAULT_TOOL_COLOR;
+                          return (
+                            <span key={name} className={`text-[10px] ${tc.bg} ${tc.text} px-2 py-0.5 rounded-full font-mono font-semibold`}>
+                              {name} {count}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      {/* Files */}
+                      {a.filesEdited.size > 0 && (
+                        <div>
+                          <div className="text-[9px] text-slate-400 uppercase font-bold mb-0.5">Files Edited</div>
+                          <div className="text-[10px] text-slate-500 font-mono leading-relaxed">
+                            {[...a.filesEdited].slice(0, 6).join(', ')}{a.filesEdited.size > 6 ? ` +${a.filesEdited.size - 6} more` : ''}
+                          </div>
+                        </div>
+                      )}
+                      {/* Stats grid */}
+                      <div className="grid grid-cols-3 gap-1 text-center">
+                        <MiniStat label="Success" value={`${sr}%`} />
+                        <MiniStat label="Blocked" value={a.blockedCount} />
+                        <MiniStat label="Contacts" value={a.uniqueContacts.size} />
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
-      )}
+
+        {/* Right column: Hotspots + Communication */}
+        <div className="space-y-4">
+          {/* File Hotspots */}
+          {hotspots.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-2">File Hotspots</div>
+              <div className="space-y-1.5">
+                {hotspots.map(([file, data]) => {
+                  const maxEdits = Math.max(...hotspots.map(h => h[1].edits));
+                  return (
+                    <div key={file}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-[11px] font-mono text-slate-600 truncate flex-1">{file}</span>
+                        <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                          {data.agents.size > 1 && (
+                            <span className="text-[9px] bg-orange-100 text-orange-600 px-1 rounded font-bold">{data.agents.size}x</span>
+                          )}
+                          <span className="text-[10px] text-slate-400 font-mono w-5 text-right">{data.edits}</span>
+                        </div>
+                      </div>
+                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${data.agents.size > 1 ? 'bg-orange-500' : 'bg-blue-400'}`}
+                          style={{ width: `${(data.edits / maxEdits) * 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Communication Flow */}
+          {topComms.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="text-xs font-semibold text-slate-400 uppercase mb-2">Communication Flow</div>
+              <div className="space-y-1.5">
+                {topComms.map(([pair, count]) => {
+                  const [from, to] = pair.split('→');
+                  const fromAgent = agents.find(a => a.id === from);
+                  const toAgent = agents.find(a => a.id === to);
+                  const maxCount = topComms[0][1];
+                  return (
+                    <div key={pair}>
+                      <div className="flex items-center gap-1.5 text-[11px] mb-0.5">
+                        <span className="font-bold text-blue-600 truncate max-w-[80px]">{fromAgent?.name ?? from.slice(0, 8)}</span>
+                        <svg width="12" height="8" className="flex-shrink-0 text-slate-300"><path d="M0 4h8m0 0l-3-3m3 3l-3 3" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+                        <span className="font-bold text-purple-600 truncate max-w-[80px]">{toAgent?.name ?? to.slice(0, 8)}</span>
+                        <span className="ml-auto text-slate-400 font-mono text-[10px]">{count}</span>
+                      </div>
+                      <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-blue-400 to-purple-400 rounded-full"
+                          style={{ width: `${(count / maxCount) * 100}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function Stat({ label, value, color }: { label: string; value: string | number; color: string }) {
+function getBadges(a: AgentProfile): { text: string; color: string }[] {
+  const badges: { text: string; color: string }[] = [];
+  if (a.blockedCount > 0) badges.push({ text: `Blocked ${a.blockedCount}x`, color: 'bg-red-100 text-red-600' });
+  if (a.readBeforeEditRatio > 2) badges.push({ text: 'Thorough', color: 'bg-blue-100 text-blue-600' });
+  if (a.readBeforeEditRatio === 0 && a.filesEdited.size > 0) badges.push({ text: 'Fast mover', color: 'bg-amber-100 text-amber-600' });
+  if (a.uniqueContacts.size >= 3) badges.push({ text: 'Collaborator', color: 'bg-green-100 text-green-600' });
+  if (a.messagesSent === 0 && a.toolCalls > 5) badges.push({ text: 'Solo', color: 'bg-slate-200 text-slate-500' });
+  if (a.toolCalls > 0 && a.toolFail === 0) badges.push({ text: 'Zero errors', color: 'bg-emerald-100 text-emerald-600' });
+  return badges;
+}
+
+function KPI({ label, value, icon, iconBg }: { label: string; value: string | number; icon: string; iconBg: string }) {
   return (
-    <div className="bg-slate-50 rounded-lg p-2 text-center">
-      <div className="text-[9px] text-slate-400 uppercase font-bold">{label}</div>
-      <div className={`text-sm font-bold ${color}`}>{typeof value === 'number' ? value.toLocaleString() : value}</div>
+    <div className="flex items-center gap-2.5">
+      <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>{icon}</div>
+      <div>
+        <div className={`text-base font-bold text-slate-800`}>{typeof value === 'number' ? value.toLocaleString() : value}</div>
+        <div className="text-[10px] text-slate-400 uppercase font-semibold -mt-0.5">{label}</div>
+      </div>
     </div>
   );
 }
 
-function Badge({ text, color }: { text: string; color: string }) {
+function MiniStat({ label, value }: { label: string; value: string | number }) {
   return (
-    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${color}`}>{text}</span>
+    <div className="bg-white rounded p-1">
+      <div className="text-[10px] font-bold text-slate-700">{value}</div>
+      <div className="text-[8px] text-slate-400 uppercase">{label}</div>
+    </div>
   );
 }
